@@ -1,6 +1,60 @@
 import asyncio
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 import json
+import jsonschema
+
+base_schema = {
+    '$schema': 'http://json-schema.org/draft-07/schema#',
+    'type': 'object',
+    'properties': {
+        'request_type': {'type': 'string', 'enum': ['send_message', 'receive_message', 'error']},
+        'payload': {'type': 'object'},
+    },
+    'required': ['request_type', 'payload'],
+    'additionalProperties': False
+}
+
+send_message_schema = {
+    '$schema': 'http://json-schema.org/draft-07/schema#',
+    'type': 'object',
+    'properties': {
+        'text': {'type': 'string', 'maxLength': 500},
+        'conversation_id': {'type': 'number', 'minimum': 0,  'multipleOf': 1.0}
+    },
+    'required': ['text', 'conversation_id'],
+    'additionalProperties': False
+}
+
+receive_message_schema = {
+    '$schema': 'http://json-schema.org/draft-07/schema#',
+    'type': 'object',
+    'properties': {
+        'error_code': {'type': 'number', 'minimum': 0,  'multipleOf': 1.0},
+        'error_message': {'type': 'string', 'maxLength': 500},
+    },
+    'required': ['error_code', 'error_message'],
+    'additionalProperties': False
+}
+
+error_schema = {
+    '$schema': 'http://json-schema.org/draft-07/schema#',
+    'type': 'object',
+    'properties': {
+        'text': {'type': 'string', 'maxLength': 500},
+        'conversation_id': {'type': 'number', 'minimum': 0, 'multipleOf': 1.0},
+        'author_name': {'type': 'string', 'maxLength': 100},
+        'time': {'type': 'int', 'minimum': 0},
+    },
+    'required': ['text', 'conversation_id', 'author_name', 'time'],
+    'additionalProperties': False
+}
+
+payload_schemas = {
+    'send_message': send_message_schema,
+    'receive_message': receive_message_schema,
+    'error': error_schema
+}
+
 
 class ChatConsumer(AsyncJsonWebsocketConsumer):
     def __init__(self, *args, **kwargs):
@@ -11,27 +65,17 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         self._authenticated = True
 
     async def connect(self):
-        # Called on connection.
-        # To accept the connection call:
+        if self.scope['user'] is None:
+            await self.close()
+
         await self.accept()
 
     async def receive_json(self, content):
-        if await self.validate_authenticated(content):
-            await self.send_json(content)
-        # Called with either text_data or bytes_data for each frame
-        # You can call:
+        await self.send_json(content)
 
     async def disconnect(self, close_code):
         # Called when the socket closes
         pass
 
-    async def validate_authenticated(self, content):
-        if self._authenticated:
-            return True
-
-        if 'authenticated' in content and content['authenticated'] == 'true':
-            self._authenticated = True
-            return True
-
-        await self.send_json(json.dumps({'error': 1, 'text': 'unauthenticated!'}))
-        return False
+    def process_request(self, content):
+        json
