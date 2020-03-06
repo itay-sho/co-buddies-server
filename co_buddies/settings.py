@@ -142,5 +142,5 @@ if os.environ['ENV'] == 'production':
         os.path.join(BASE_DIR, 'static'),
     )
 
-# Activate Django-Heroku.
-django_heroku.settings(locals())
+    # Activate Django-Heroku.
+    django_heroku.settings(locals())
