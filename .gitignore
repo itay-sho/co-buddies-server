@@ -1,3 +1,4 @@
 /.idea
 /venv
+/staticfiles
 *.sqlite3
