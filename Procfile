@@ -1,1 +1,1 @@
-daphne co_buddies.asgi:application
+web:daphne co_buddies.asgi:application
