@@ -134,7 +134,13 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/3.0/howto/static-files/
 
-STATIC_URL = '/static/'
+if os.environ['ENV'] == 'dev':
+    STATIC_URL = '/static/'
+if os.environ['ENV'] == 'production':
+    # Extra places for collectstatic to find static files.
+    STATICFILES_DIRS = (
+        os.path.join(BASE_DIR, 'static'),
+    )
 
 # Activate Django-Heroku.
 django_heroku.settings(locals())
