@@ -120,9 +120,9 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
             await self.send_error_message(error_code=ErrorEnum.SCHEMA_ERROR, error_message='Invalid json schema', response_to=response_to)
 
     async def disconnect(self, close_code):
-        # Called when the socket closes
         await self.channel_layer.group_discard(self.get_channel_group(), self.channel_name)
-        self.self._conversation_id
+
+        # TODO: send disconnet message
         await self.close()
 
     def validate_content(self, content):
