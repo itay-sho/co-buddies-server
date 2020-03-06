@@ -20,8 +20,9 @@ class QueryAuthMiddleware:
         # Look up user from query string (you should also do things like
         # checking if it is a valid user ID, or if scope["user"] is already
         # populated).
-        print(scope["query_string"])
         user = User.objects.get(id=int(scope["query_string"]))
+
+        scope['user'] = user
 
         # Return the inner application directly and let it run everything else
         return self.inner(dict(scope, user=user))

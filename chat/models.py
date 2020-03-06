@@ -1,5 +1,7 @@
+import asyncio
 from django.db import models
 from django.contrib.auth.models import User
+from channels.db import database_sync_to_async
 
 
 # Create your models here.
@@ -22,3 +24,21 @@ class Message(models.Model):
     author = models.ForeignKey(ChatUser, on_delete=models.CASCADE, related_name='messages')
     text = models.TextField(max_length=500)
     time = models.DateTimeField(auto_now_add=True)
+
+    @staticmethod
+    def validate_message_creation(author_id, conversation_id):
+        conversation = Conversation.objects.filter(id=conversation_id, attendees__in=[author_id], is_open=True)
+
+        # didn't find any matching conversation
+        if len(conversation) == 0:
+            raise Message.DoesNotExist()
+
+        return True
+
+    @staticmethod
+    async def create_message_async(author_id, conversation_id, text):
+        return await database_sync_to_async(Message.objects.create)(
+            author_id=author_id,
+            conversation_id=conversation_id,
+            text=text
+        )

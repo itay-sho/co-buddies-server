@@ -11,11 +11,13 @@ Django==3.0.4
 hyperlink==19.0.0
 idna==2.9
 incremental==17.5.0
+jsonschema==3.2.0
 pyasn1==0.4.8
 pyasn1-modules==0.2.8
 pycparser==2.20
 PyHamcrest==2.0.2
 pyOpenSSL==19.1.0
+pyrsistent==0.15.7
 pytz==2019.3
 service-identity==18.1.0
 six==1.14.0
