@@ -20,13 +20,20 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # See https://docs.djangoproject.com/en/3.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = '61$(9j2+s4n%g#6orz$k=2dy(t)*9*9x3m*m1pk+lw*=_q%dv*'
+if os.environ.get('ENV') == 'dev':
+    SECRET_KEY = 'mysecret'
+elif os.environ.get('ENV') == 'production':
+    SECRET_KEY = os.environ.get('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+if os.environ.get('ENV') == 'dev':
+    DEBUG = True
 
-ALLOWED_HOSTS = ['https://co-buddies.co.il', '*']
-
+if os.environ.get('ENV') == 'dev':
+    ALLOWED_HOSTS = ['*']
+elif os.environ.get('ENV') == 'production':
+    domain = os.environ.get('DOMAIN')
+    ALLOWED_HOSTS = [f'https://{domain}', f'wss://{domain}']
 
 # Application definition
 os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = "true"
@@ -85,11 +92,12 @@ DATABASES = {
     }
 }
 
+redis_address = os.environ.get('REDIS_ADDR')
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [("127.0.0.1", 6379)],
+            "hosts": [(redis_address, 6379)],
         },
     },
 }
