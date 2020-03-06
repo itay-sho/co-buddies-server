@@ -87,12 +87,12 @@ DATABASES = {
     }
 }
 
-redis_address = os.environ['REDIS_ADDR']
+redis_url = os.environ['REDIS_URL']
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [(redis_address, 6379)],
+            "hosts": [redis_url],
         },
     },
 }
