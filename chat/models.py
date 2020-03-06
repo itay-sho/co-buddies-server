@@ -18,6 +18,13 @@ class Conversation(models.Model):
     attendees = models.ManyToManyField(ChatUser, 'conversations')
     is_open = models.BooleanField(default=True)
 
+    async def close_conversation(self):
+        self.is_open = False
+        return await database_sync_to_async(self.save)()
+
+    def __str__(self):
+        return 'Conversation of: ' + ', '.join([f'{chat_user.user.first_name} {chat_user.user.last_name}' for chat_user in self.attendees.all()])
+
 
 class Message(models.Model):
     conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE, related_name='messages')

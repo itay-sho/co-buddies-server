@@ -77,11 +77,24 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         super().__init__(*args, **kwargs)
 
         self._authenticated = False
+        self._conversation_id = None
         self._seq = 0
+        # self.channel_name = ''.join([random.choice(string.ascii_letters + string.digits) for i in range(15)])
+
+    def get_channel_group(self):
+        return f'conversation_{self._conversation_id}'
 
     def get_set_seq(self):
         self._seq += 1
         return self._seq
+
+    async def update_conversation_id(self, value):
+        # TODO: make this function blocking in order to avoid async bugs !
+
+        if self._conversation_id != value:
+            await self.channel_layer.group_discard(self.get_channel_group(), self.channel_name)
+            self._conversation_id = value
+            await self.channel_layer.group_add(self.get_channel_group(), self.channel_name)
 
     def set_authenticated(self):
         self._authenticated = True
@@ -92,7 +105,7 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
 
         await self.accept()
 
-    async def receive_json(self, content):
+    async def receive_json(self, content, **kwargs):
         try:
             self.validate_content(content)
 
@@ -108,7 +121,9 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
 
     async def disconnect(self, close_code):
         # Called when the socket closes
-        pass
+        await self.channel_layer.group_discard(self.get_channel_group(), self.channel_name)
+        self.self._conversation_id
+        await self.close()
 
     def validate_content(self, content):
         jsonschema.validate(content, base_schema)
@@ -118,6 +133,7 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
 
     async def process__send_message(self, content):
         payload = content['payload']
+        await self.update_conversation_id(payload['conversation_id'])
 
         # validate if the user is allowed to do this operation
         try:
@@ -149,7 +165,16 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
             }
         }
 
-        await self.send_json(content)
+        await self.channel_layer.group_send(
+            self.get_channel_group(),
+            {
+                'type': 'chat.message',
+                'content': content
+            }
+        )
+
+    async def chat_message(self, event):
+        await self.send_json(event['content'])
 
     async def process__receive_message(self, content):
         await self.send_error_message(
