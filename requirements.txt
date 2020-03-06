@@ -10,13 +10,16 @@ channels-redis==2.4.2
 constantly==15.1.0
 cryptography==2.8
 daphne==2.4.1
+dj-database-url==0.5.0
 Django==3.0.4
+django-heroku==0.3.1
 hiredis==1.0.1
 hyperlink==19.0.0
 idna==2.9
 incremental==17.5.0
 jsonschema==3.2.0
 msgpack==0.6.2
+psycopg2==2.8.4
 pyasn1==0.4.8
 pyasn1-modules==0.2.8
 pycparser==2.20
@@ -29,4 +32,5 @@ six==1.14.0
 sqlparse==0.3.1
 Twisted==19.10.0
 txaio==20.1.1
+whitenoise==5.0.1
 zope.interface==4.7.1

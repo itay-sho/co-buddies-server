@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/3.0/ref/settings/
 """
 
 import os
+import django_heroku
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -20,20 +21,14 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # See https://docs.djangoproject.com/en/3.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-if os.environ.get('ENV') == 'dev':
+if os.environ['ENV'] == 'dev':
     SECRET_KEY = 'mysecret'
-elif os.environ.get('ENV') == 'production':
-    SECRET_KEY = os.environ.get('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-if os.environ.get('ENV') == 'dev':
+if os.environ['ENV'] == 'dev':
     DEBUG = True
 
-if os.environ.get('ENV') == 'dev':
-    ALLOWED_HOSTS = ['*']
-elif os.environ.get('ENV') == 'production':
-    domain = os.environ.get('DOMAIN')
-    ALLOWED_HOSTS = [f'https://{domain}', f'wss://{domain}']
+ALLOWED_HOSTS = ['*']
 
 # Application definition
 os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = "true"
@@ -92,7 +87,7 @@ DATABASES = {
     }
 }
 
-redis_address = os.environ.get('REDIS_ADDR')
+redis_address = os.environ['REDIS_ADDR']
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
@@ -140,3 +135,6 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/3.0/howto/static-files/
 
 STATIC_URL = '/static/'
+
+# Activate Django-Heroku.
+django_heroku.settings(locals())
