@@ -28,6 +28,15 @@ class Conversation(models.Model):
     attendees = models.ManyToManyField(ChatUser, 'conversations')
     is_open = models.BooleanField(default=True)
 
+    @staticmethod
+    def create_conversation(attendees_id):
+        with transaction.atomic():
+            conversation = Conversation.objects.create()
+            conversation.attendees.add(*attendees_id)
+            conversation.save()
+
+        return conversation
+
     async def close_conversation(self):
         self.is_open = False
         return await database_sync_to_async(self.save)()
@@ -48,7 +57,7 @@ class Message(models.Model):
 
         # didn't find any matching conversation
         if len(conversation) == 0:
-            raise Message.DoesNotExist()
+            raise Conversation.DoesNotExist()
 
         return True
 

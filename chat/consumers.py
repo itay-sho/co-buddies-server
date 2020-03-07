@@ -3,14 +3,14 @@ import enum
 
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 import jsonschema
-from chat.models import Message
+from chat.models import Conversation, Message
 import time
 
 base_schema = {
     '$schema': 'http://json-schema.org/draft-07/schema#',
     'type': 'object',
     'properties': {
-        'request_type': {'type': 'string', 'enum': ['send_message', 'receive_message', 'error']},
+        'request_type': {'type': 'string', 'enum': ['send_message', 'receive_message', 'error', 'request_match', 'receive_match', 'disconnect']},
         'payload': {'type': 'object'},
         'seq': {'type': 'number', 'minimum': 1,  'multipleOf': 1.0},
     },
@@ -23,9 +23,8 @@ send_message_schema = {
     'type': 'object',
     'properties': {
         'text': {'type': 'string', 'maxLength': 500},
-        'conversation_id': {'type': 'number', 'minimum': 1,  'multipleOf': 1.0}
     },
-    'required': ['text', 'conversation_id'],
+    'required': ['text'],
     'additionalProperties': False
 }
 
@@ -54,19 +53,48 @@ receive_message_schema = {
     'additionalProperties': False
 }
 
+request_match_schema = {
+    '$schema': 'http://json-schema.org/draft-07/schema#',
+    'type': 'object',
+    'properties': {},
+    'additionalProperties': False
+}
+
+receive_match_schema = {
+    '$schema': 'http://json-schema.org/draft-07/schema#',
+    'type': 'object',
+    'properties': {
+        'conversation_id': {'type': 'number', 'minimum': 1, 'multipleOf': 1.0},
+    },
+    'additionalProperties': False
+}
+
+disconnect_schema = {
+    '$schema': 'http://json-schema.org/draft-07/schema#',
+    'type': 'object',
+    'properties': {
+        'user_id': {'type': 'number', 'minimum': 1, 'multipleOf': 1.0},
+    },
+    'additionalProperties': False
+}
+
 payload_dict = {
     'send_message': send_message_schema,
     'receive_message': receive_message_schema,
-    'error': error_schema
+    'error': error_schema,
+    'request_match': request_match_schema,
+    'receive_match': receive_match_schema,
+    'disconnect': disconnect_schema
 }
 
 
 class ErrorEnum(enum.Enum):
     OK = 0
     UNAUTHENTICATED = 100
-    FORBIDDEN_ACTION = enum.auto()
+    CONVERSATION_CLOSED = enum.auto()
     SCHEMA_ERROR = enum.auto()
     UNIMPLEMENTED = enum.auto()
+    CONVERSATION_NOT_INITIALIZED = enum.auto()
 
     # KEEP LAST
     UNKNOWN_ERROR = enum.auto()
@@ -84,7 +112,7 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
     def get_channel_group(self):
         return f'conversation_{self._conversation_id}'
 
-    def get_set_seq(self):
+    def get_next_seq(self):
         self._seq += 1
         return self._seq
 
@@ -109,8 +137,11 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         try:
             self.validate_content(content)
 
-            # calling the specific payload process function
-            await getattr(self, f'process__{content["request_type"]}')(content)
+            try:
+                # calling the specific payload process function
+                await getattr(self, f'process__{content["request_type"]}')(content)
+            except AttributeError:
+                await self.process__default(content)
 
         except (jsonschema.exceptions.ValidationError, jsonschema.exceptions.FormatError):
             response_to = None
@@ -119,10 +150,16 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
 
             await self.send_error_message(error_code=ErrorEnum.SCHEMA_ERROR, error_message='Invalid json schema', response_to=response_to)
 
-    async def disconnect(self, close_code):
-        await self.channel_layer.group_discard(self.get_channel_group(), self.channel_name)
+    async def receive_match(self, content):
+        conversation_id = content['conversation_id']
+        await self.update_conversation_id(conversation_id)
+        await self.send_receive_match(conversation_id)
 
-        # TODO: send disconnet message
+    async def disconnect(self, close_code):
+        group = self.get_channel_group()
+        await self.channel_layer.group_discard(group, self.channel_name)
+        await self.send_disconnect_message(group)
+
         await self.close()
 
     def validate_content(self, content):
@@ -133,40 +170,43 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
 
     async def process__send_message(self, content):
         payload = content['payload']
-        await self.update_conversation_id(payload['conversation_id'])
+        if self._conversation_id is None:
+            await self.send_error_message(ErrorEnum.CONVERSATION_NOT_INITIALIZED, "conversation has not initialized yet")
+            return
 
         # validate if the user is allowed to do this operation
         try:
-            Message.validate_message_creation(author_id=self.scope['user'].id, conversation_id=payload['conversation_id'])
+            Message.validate_message_creation(author_id=self.scope['user'].id, conversation_id=self._conversation_id)
             message = await Message.create_message_async(
                 author_id=self.scope['user'].id,
-                conversation_id=payload['conversation_id'],
+                conversation_id=self._conversation_id,
                 text=payload['text']
             )
 
-            # sending success to the user
-            await self.send_error_message(ErrorEnum.OK, 'Message received and will be broadcasted', content['seq'])
+            content = {
+                'request_type': 'receive_message',
+                # TODO: this is a bug: using one chat sequence number to other.
+                'seq': self.get_next_seq(),
+                'payload': {
+                    'text': message.text,
+                    'conversation_id': message.conversation_id,
+                    'author_name': f'{message.author.user.first_name} {message.author.user.last_name}',
+                    'time': time.mktime(message.time.timetuple())
+                }
+            }
 
             # broadcasting the message
-            await self.broadcast_message(message)
+            await self.send_to_group(content)
 
-        except Message.DoesNotExist:
-            await self.send_error_message(ErrorEnum.FORBIDDEN_ACTION, 'attempted operation was forbidden', content['seq'])
+        except Conversation.DoesNotExist:
+            await self.send_error_message(ErrorEnum.CONVERSATION_CLOSED, 'Conversation has closed', content['seq'])
 
-    async def broadcast_message(self, message):
-        content = {
-            'request_type': 'receive_message',
-            'seq': self.get_set_seq(),
-            'payload': {
-                'text': message.text,
-                'conversation_id': message.conversation_id,
-                'author_name': f'{message.author.user.first_name} {message.author.user.last_name}',
-                'time':  time.mktime(message.time.timetuple())
-            }
-        }
+    async def send_to_group(self, content, group=None):
+        if group is None:
+            group = self.get_channel_group()
 
         await self.channel_layer.group_send(
-            self.get_channel_group(),
+            group,
             {
                 'type': 'chat.message',
                 'content': content
@@ -176,19 +216,19 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
     async def chat_message(self, event):
         await self.send_json(event['content'])
 
-    async def process__receive_message(self, content):
+    async def process__default(self, content):
         await self.send_error_message(
             error_code=ErrorEnum.UNIMPLEMENTED,
             error_message='This action is not implemented by the server',
             response_to=content['seq']
         )
 
-    async def process__error(self, content):
-        await self.send_error_message(
-            error_code=ErrorEnum.UNIMPLEMENTED,
-            error_message='This action is not implemented by the server',
-            response_to=content['seq']
+    async def process__request_match(self, content):
+        await self.channel_layer.send(
+            'matchmaking-task',
+            {'type': 'request_match', 'channel_name': self.channel_name, 'user_id': self.scope['user'].id}
         )
+        await self.send_error_message(response_to=content['seq'])
 
     async def send_json(self, content, close=False):
         self.validate_content(content)
@@ -197,7 +237,7 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
     async def send_error_message(self, error_code=ErrorEnum.OK, error_message='', response_to=None):
         content = {
             'request_type': 'error',
-            'seq': self.get_set_seq(),
+            'seq': self.get_next_seq(),
             'payload': {
                 'error_code': error_code.value,
                 'error_message': error_message
@@ -208,3 +248,25 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
             content['payload']['response_to'] = response_to
 
         await self.send_json(content)
+
+    async def send_receive_match(self, conversation_id):
+        content = {
+            'request_type': 'receive_match',
+            'seq': self.get_next_seq(),
+            'payload': {
+                'conversation_id': conversation_id
+            }
+        }
+
+        await self.send_json(content)
+
+    async def send_disconnect_message(self, group):
+        content = {
+            'request_type': 'disconnect',
+            'seq': self.get_next_seq(),
+            'payload': {
+                'user_id': self.scope['user'].id
+            }
+        }
+
+        await self.send_to_group(content, group)
