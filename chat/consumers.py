@@ -263,6 +263,7 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
     async def send_disconnect_message(self, group):
         content = {
             'request_type': 'disconnect',
+            # TODO: this is a bug: using one chat sequence number to other.
             'seq': self.get_next_seq(),
             'payload': {
                 'user_id': self.scope['user'].id
