@@ -10,15 +10,12 @@ import time
 # Create your models here.
 class ChatUser(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='chat_user', unique=True, null=False)
-    birth_date = models.DateField(null=True)
+    age = models.IntegerField(null=True)
     reason_to_isolation = models.TextField(max_length=300, default='')
 
     @staticmethod
-    def create_chat_user(user, birth_date=None, reason_to_isolation=None):
-        if birth_date is not None:
-            birth_date = time.strftime('%Y-%m-%d', time.localtime(birth_date))
-
-        return ChatUser.objects.create(user_id=user.id, birth_date=birth_date, reason_to_isolation=reason_to_isolation)
+    def create_chat_user(user, age=None, reason_to_isolation=None):
+        return ChatUser.objects.create(user_id=user.id, age=age, reason_to_isolation=reason_to_isolation)
 
     def __str__(self):
         return self.user.username
