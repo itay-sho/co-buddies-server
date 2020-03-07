@@ -2,13 +2,23 @@ import asyncio
 from django.db import models
 from django.contrib.auth.models import User
 from channels.db import database_sync_to_async
+from django.db import IntegrityError
+from django.db import transaction
 
 
 # Create your models here.
 class ChatUser(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='chat_user', unique=True, null=False)
     birth_date = models.DateField(null=True)
-    reason_to_isolation = models.TextField(max_length=300)
+    reason_to_isolation = models.TextField(max_length=300, default='')
+
+    @staticmethod
+    def create_chat_user(username, password, birth_date=None, reason_to_isolation=None):
+        with transaction.atomic():
+            user = User.objects.create_user(username=username, password=password)
+            chat_user = ChatUser.objects.create(user_id=user.id, birth_date=birth_date, reason_to_isolation=reason_to_isolation)
+
+        return chat_user
 
     def __str__(self):
         return self.user.username
