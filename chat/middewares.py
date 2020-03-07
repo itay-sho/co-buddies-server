@@ -1,6 +1,7 @@
 from django.contrib.auth.models import User
 import django.db
 from channels.middleware import BaseMiddleware
+from django.db import close_old_connections
 
 
 class QueryAuthMiddleware:
@@ -13,9 +14,8 @@ class QueryAuthMiddleware:
         self.inner = inner
 
     def __call__(self, scope):
-        #
-        # # Close old database connections to prevent usage of timed out connections
-        # close_old_connections()
+        # Close old database connections to prevent usage of timed out connections
+        close_old_connections()
 
         # Look up user from query string (you should also do things like
         # checking if it is a valid user ID, or if scope["user"] is already
