@@ -1,16 +1,20 @@
 import asyncio
 import enum
 
+from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
+from rest_framework.authtoken.models import Token
 import jsonschema
 from chat.models import Conversation, Message
 import time
+import threading
+from django.contrib.auth.models import User
 
 base_schema = {
     '$schema': 'http://json-schema.org/draft-07/schema#',
     'type': 'object',
     'properties': {
-        'request_type': {'type': 'string', 'enum': ['send_message', 'receive_message', 'error', 'request_match', 'receive_match', 'disconnect']},
+        'request_type': {'type': 'string', 'enum': ['send_message', 'receive_message', 'error', 'request_match', 'receive_match', 'disconnect', 'authenticate']},
         'payload': {'type': 'object'},
         'seq': {'type': 'number', 'minimum': 1,  'multipleOf': 1.0},
     },
@@ -66,6 +70,7 @@ receive_match_schema = {
     'properties': {
         'conversation_id': {'type': 'number', 'minimum': 1, 'multipleOf': 1.0},
     },
+    'required': ['conversation_id'],
     'additionalProperties': False
 }
 
@@ -75,6 +80,17 @@ disconnect_schema = {
     'properties': {
         'user_id': {'type': 'number', 'minimum': 1, 'multipleOf': 1.0},
     },
+    'required': ['user_id'],
+    'additionalProperties': False
+}
+
+authenticate_schema = {
+    '$schema': 'http://json-schema.org/draft-07/schema#',
+    'type': 'object',
+    'properties': {
+        'access_token': {'type': 'string', 'maxLength': 100},
+    },
+    'required': ['access_token'],
     'additionalProperties': False
 }
 
@@ -84,7 +100,8 @@ payload_dict = {
     'error': error_schema,
     'request_match': request_match_schema,
     'receive_match': receive_match_schema,
-    'disconnect': disconnect_schema
+    'disconnect': disconnect_schema,
+    'authenticate': authenticate_schema
 }
 
 
@@ -95,19 +112,30 @@ class ErrorEnum(enum.Enum):
     SCHEMA_ERROR = enum.auto()
     UNIMPLEMENTED = enum.auto()
     CONVERSATION_NOT_INITIALIZED = enum.auto()
+    TIMEOUT = enum.auto()
+    UserInactive = enum.auto()
+    InvalidToken = enum.auto()
 
     # KEEP LAST
     UNKNOWN_ERROR = enum.auto()
 
 
 class ChatConsumer(AsyncJsonWebsocketConsumer):
+    AUTHENTICATE_TIMEOUT_SECONDS = 3
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self._authenticated = False
         self._conversation_id = None
         self._seq = 0
-        # self.channel_name = ''.join([random.choice(string.ascii_letters + string.digits) for i in range(15)])
+        self._is_authenticated = False
+        self._authenticate_timeout_task = asyncio.create_task(self.send_disconnection_due_to_authentication_timeout())
+
+    async def send_disconnection_due_to_authentication_timeout(self):
+        await asyncio.sleep(ChatConsumer.AUTHENTICATE_TIMEOUT_SECONDS)
+        await self.send_error_message(ErrorEnum.TIMEOUT, error_message='disconnecting due to timeout')
+        await self.close()
 
     def get_channel_group(self):
         return f'conversation_{self._conversation_id}'
@@ -128,14 +156,14 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         self._authenticated = True
 
     async def connect(self):
-        if self.scope['user'] is None:
-            await self.close()
-
         await self.accept()
 
     async def receive_json(self, content, **kwargs):
         try:
             self.validate_content(content)
+
+            if not self._is_authenticated and content['request_type'] != 'authenticate':
+                await self.close()
 
             try:
                 # calling the specific payload process function
@@ -156,9 +184,10 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         await self.send_receive_match(conversation_id)
 
     async def disconnect(self, close_code):
-        group = self.get_channel_group()
-        await self.channel_layer.group_discard(group, self.channel_name)
-        await self.send_disconnect_message(group)
+        if self._is_authenticated:
+            group = self.get_channel_group()
+            await self.channel_layer.group_discard(group, self.channel_name)
+            await self.send_disconnect_message(group)
 
         await self.close()
 
@@ -200,6 +229,26 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
 
         except Conversation.DoesNotExist:
             await self.send_error_message(ErrorEnum.CONVERSATION_CLOSED, 'Conversation has closed', content['seq'])
+
+    async def process__authenticate(self, content):
+        access_token = content['payload']['access_token']
+
+        try:
+            token = await database_sync_to_async(Token.objects.get)(key=access_token)
+            user = await database_sync_to_async(User.objects.get)(id=token.user_id)
+
+        except Token.DoesNotExist:
+            await self.send_error_message(error_code=ErrorEnum.InvalidToken, error_message='Invalid access token', response_to=content['seq'])
+            return
+
+        if not user.is_active:
+            await self.send_error_message(error_code=ErrorEnum.UserInactive, error_message='Select user inactive', response_to=content['seq'])
+            return
+
+        # Success
+        self._authenticate_timeout_task.cancel()
+        self.scope['user'] = user
+        await self.send_error_message(response_to=content['seq'])
 
     async def send_to_group(self, content, group=None):
         if group is None:

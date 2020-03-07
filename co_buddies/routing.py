@@ -2,7 +2,6 @@ import asyncio
 from channels.routing import ProtocolTypeRouter, URLRouter, ChannelNameRouter
 from channels.auth import AuthMiddlewareStack
 from django.urls import re_path
-from chat.middewares import QueryAuthMiddleware
 from channels.security.websocket import AllowedHostsOriginValidator
 
 from chat.consumers import ChatConsumer
@@ -15,9 +14,7 @@ application = ProtocolTypeRouter({
     # WebSocket chat handler
     "websocket":
         AllowedHostsOriginValidator(
-            QueryAuthMiddleware(
-                URLRouter(websocket_urlpatterns)
-            )
+            URLRouter(websocket_urlpatterns)
         ),
     "channel":
         ChannelNameRouter({
