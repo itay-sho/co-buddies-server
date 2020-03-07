@@ -4,6 +4,7 @@ from django.contrib.auth.models import User
 from channels.db import database_sync_to_async
 from django.db import IntegrityError
 from django.db import transaction
+import time
 
 
 # Create your models here.
@@ -13,12 +14,11 @@ class ChatUser(models.Model):
     reason_to_isolation = models.TextField(max_length=300, default='')
 
     @staticmethod
-    def create_chat_user(username, password, birth_date=None, reason_to_isolation=None):
-        with transaction.atomic():
-            user = User.objects.create_user(username=username, password=password)
-            chat_user = ChatUser.objects.create(user_id=user.id, birth_date=birth_date, reason_to_isolation=reason_to_isolation)
+    def create_chat_user(user, birth_date=None, reason_to_isolation=None):
+        if birth_date is not None:
+            birth_date = time.strftime('%Y-%m-%d', time.localtime(birth_date))
 
-        return chat_user
+        return ChatUser.objects.create(user_id=user.id, birth_date=birth_date, reason_to_isolation=reason_to_isolation)
 
     def __str__(self):
         return self.user.username
