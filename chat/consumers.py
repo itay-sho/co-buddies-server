@@ -126,7 +126,6 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self._authenticated = False
         self._conversation_id = None
         self._seq = 0
         self._is_authenticated = False
@@ -152,9 +151,6 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
             self._conversation_id = value
             await self.channel_layer.group_add(self.get_channel_group(), self.channel_name)
 
-    def set_authenticated(self):
-        self._authenticated = True
-
     async def connect(self):
         await self.accept()
 
@@ -164,6 +160,7 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
 
             if not self._is_authenticated and content['request_type'] != 'authenticate':
                 await self.close()
+                return
 
             try:
                 # calling the specific payload process function
@@ -205,9 +202,9 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
 
         # validate if the user is allowed to do this operation
         try:
-            Message.validate_message_creation(author_id=self.scope['user'].id, conversation_id=self._conversation_id)
+            Message.validate_message_creation(author_id=self.scope['user'].chat_user.id, conversation_id=self._conversation_id)
             message = await Message.create_message_async(
-                author_id=self.scope['user'].id,
+                author_id=self.scope['user'].chat_user.id,
                 conversation_id=self._conversation_id,
                 text=payload['text']
             )
@@ -248,6 +245,7 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         # Success
         self._authenticate_timeout_task.cancel()
         self.scope['user'] = user
+        self._is_authenticated = True
         await self.send_error_message(response_to=content['seq'])
 
     async def send_to_group(self, content, group=None):
@@ -275,7 +273,7 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
     async def process__request_match(self, content):
         await self.channel_layer.send(
             'matchmaking-task',
-            {'type': 'request_match', 'channel_name': self.channel_name, 'user_id': self.scope['user'].id}
+            {'type': 'request_match', 'channel_name': self.channel_name, 'user_id': self.scope['user'].chat_user.id}
         )
         await self.send_error_message(response_to=content['seq'])
 
@@ -315,7 +313,7 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
             # TODO: this is a bug: using one chat sequence number to other.
             'seq': self.get_next_seq(),
             'payload': {
-                'user_id': self.scope['user'].id
+                'user_id': self.scope['user'].chat_user.id
             }
         }
 
