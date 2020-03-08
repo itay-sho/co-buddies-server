@@ -124,8 +124,8 @@ class ErrorEnum(enum.Enum):
     UNIMPLEMENTED = enum.auto()
     CONVERSATION_NOT_INITIALIZED = enum.auto()
     TIMEOUT = enum.auto()
-    UserInactive = enum.auto()
-    InvalidToken = enum.auto()
+    USER_INACTIVE = enum.auto()
+    INVALID_TOKEN = enum.auto()
 
     # KEEP LAST
     UNKNOWN_ERROR = enum.auto()
@@ -250,11 +250,11 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
             user = await database_sync_to_async(User.objects.get)(id=token.user_id)
 
         except Token.DoesNotExist:
-            await self.send_error_message(error_code=ErrorEnum.InvalidToken, error_message='Invalid access token', response_to=content['seq'])
+            await self.send_error_message(error_code=ErrorEnum.INVALID_TOKEN, error_message='Invalid access token', response_to=content['seq'])
             return
 
         if not user.is_active:
-            await self.send_error_message(error_code=ErrorEnum.UserInactive, error_message='Select user inactive', response_to=content['seq'])
+            await self.send_error_message(error_code=ErrorEnum.USER_INACTIVE, error_message='Select user inactive', response_to=content['seq'])
             return
 
         # Success
