@@ -1,5 +1,6 @@
 import asyncio
 import enum
+import json
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
@@ -79,8 +80,15 @@ receive_match_schema = {
     'type': 'object',
     'properties': {
         'conversation_id': {'type': 'number', 'minimum': 1, 'multipleOf': 1.0},
+        'attendees': {
+            'type': 'object',
+            "patternProperties": {
+                "^[0-9]+$": {'type': 'string', 'maxLength': 100}
+            },
+            'additionalProperties': False
+        },
     },
-    'required': ['conversation_id'],
+    'required': ['conversation_id', 'attendees'],
     'additionalProperties': False
 }
 
@@ -95,7 +103,7 @@ disconnect_schema = {
 }
 
 authenticate_schema = {
-    '$schema': 'http://json-schema.org/draft-07/schema#',
+    '$schema': 'http://json-schema.org/drauft-07/schema#',
     'type': 'object',
     'properties': {
         'access_token': {'type': 'string', 'maxLength': 100},
@@ -188,8 +196,10 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
 
     async def receive_match(self, content):
         conversation_id = content['conversation_id']
+        attendees = json.loads(content['attendees'])
+
         await self.update_conversation_id(conversation_id)
-        await self.send_receive_match(conversation_id)
+        await self.send_receive_match(conversation_id, attendees)
 
     async def disconnect(self, close_code):
         if self._is_authenticated:
@@ -311,12 +321,13 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
 
         await self.send_json(content)
 
-    async def send_receive_match(self, conversation_id):
+    async def send_receive_match(self, conversation_id, attendees):
         content = {
             'request_type': 'receive_match',
             'seq': self.get_next_seq(),
             'payload': {
-                'conversation_id': conversation_id
+                'conversation_id': conversation_id,
+                'attendees': attendees
             }
         }
 

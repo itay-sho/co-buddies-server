@@ -1,7 +1,7 @@
 import random
 import threading
 import time
-from chat.models import Conversation
+from chat.models import Conversation, ChatUser
 
 
 class MatchMaker:
@@ -66,10 +66,15 @@ class MatchMaker:
     def _create_match(self, user_id1, user_id2):
         print(f'{user_id1} with {user_id2}')
         attendees_user_ids = [user_id1, user_id2]
+
+        # calculating attendees dict
+        chat_users = ChatUser.objects.filter(id__in=attendees_user_ids)
+        attendees = {chat_user.id: chat_user.name for chat_user in chat_users}
+
         conversation = Conversation.create_conversation(attendees_user_ids)
 
         if self._matchcreated_callback is not None:
-            self._matchcreated_callback(self._pool[user_id1], self._pool[user_id2], conversation.id)
+            self._matchcreated_callback(self._pool[user_id1], self._pool[user_id2], conversation.id, attendees)
 
         del self._pool[user_id1]
         del self._pool[user_id2]

@@ -1,6 +1,7 @@
 from asgiref.sync import async_to_sync
 from channels.generic.websocket import SyncConsumer
 from chat.match_maker import MatchMaker
+import json
 
 
 class MatchmakingTask(SyncConsumer):
@@ -25,8 +26,8 @@ class MatchmakingTask(SyncConsumer):
         print('unrequesting match')
         self.matcher.remove_from_pool_if_exist(message['user_id'])
 
-    def match_request_found(self, channel_name1, channel_name2, conversation_id):
-        payload = {'type': 'receive_match', 'conversation_id': conversation_id}
+    def match_request_found(self, channel_name1, channel_name2, conversation_id, attendees):
+        payload = {'type': 'receive_match', 'conversation_id': conversation_id, 'attendees': json.dumps(attendees)}
         async_to_sync(self.channel_layer.send)(
             channel_name1,
             payload

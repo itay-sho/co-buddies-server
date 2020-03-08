@@ -5,6 +5,7 @@ from rest_framework import serializers
 
 
 class RegisterSerializer(rest_auth.registration.serializers.RegisterSerializer):
+    name = serializers.CharField(max_length=50, required=False)
     reason_to_isolation = serializers.CharField(max_length=300, default='', required=False)
     age = serializers.IntegerField(required=False)
 
@@ -14,6 +15,7 @@ class RegisterSerializer(rest_auth.registration.serializers.RegisterSerializer):
             {
                 'age': self.validated_data.get('age', None),
                 'reason_to_isolation': self.validated_data.get('reason_to_isolation', ''),
+                'name': self.validated_data.get('name', ''),
             }
         )
 
@@ -22,6 +24,7 @@ class RegisterSerializer(rest_auth.registration.serializers.RegisterSerializer):
     def custom_signup(self, request, user):
         ChatUser.create_chat_user(
             user,
+            name=self.cleaned_data['name'],
             age=self.cleaned_data['age'],
             reason_to_isolation=self.cleaned_data['reason_to_isolation']
         )

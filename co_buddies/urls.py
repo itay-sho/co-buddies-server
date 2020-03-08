@@ -16,10 +16,12 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import re_path, path, include
 from django.views.generic import TemplateView
+from chat.views import CustomerRegisterView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     re_path(r'^$', TemplateView.as_view(template_name='index.html'), name='index'),
-    re_path(r'^rest-auth/', include('rest_auth.urls')),
-    re_path(r'^rest-auth/registration/', include('rest_auth.registration.urls')),
+    # re_path(r'^rest-auth/', include('rest_auth.urls')),
+    # re_path(r'^rest-auth/registration/', include('rest_auth.registration.urls')),
+    re_path(r'^registration/', CustomerRegisterView.as_view()),
 ]
