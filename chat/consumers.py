@@ -51,10 +51,10 @@ receive_message_schema = {
     'properties': {
         'text': {'type': 'string', 'maxLength': 500},
         'conversation_id': {'type': 'number', 'minimum': 1, 'multipleOf': 1.0},
-        'author_name': {'type': 'string', 'maxLength': 100},
+        'author_id': {'type': 'number', 'minimum': 1, 'multipleOf': 1.0},
         'time': {'type': 'number', 'minimum': 0},
     },
-    'required': ['text', 'conversation_id', 'author_name', 'time'],
+    'required': ['text', 'conversation_id', 'author_id', 'time'],
     'additionalProperties': False
 }
 
@@ -241,7 +241,7 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
                 'payload': {
                     'text': message.text,
                     'conversation_id': message.conversation_id,
-                    'author_name': f'{message.author.user.first_name} {message.author.user.last_name}',
+                    'author_id': self.scope['user'].chat_user.id,
                     'time': time.mktime(message.time.timetuple())
                 }
             }
