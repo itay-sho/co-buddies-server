@@ -23,13 +23,23 @@ class MatchMaker:
             self._should_matchmake = False
             self._seek_matches_thread.join()
 
-    def add_to_pool(self, channel_name, user_id):
-        self._pool[channel_name] = user_id
+    def add_to_pool(self, user_id, channel_name):
+        self._pool[user_id] = channel_name
         self.perform_update()
 
-    def remove_from_pool(self, channel):
-        if channel in self._pool:
-            del self._pool[channel]
+    def _exists_in_pool(self, user_id):
+        return user_id in self._pool
+
+    def get_user_channel(self, user_id):
+        if not self._exists_in_pool(user_id):
+            return None
+
+        return self._pool[user_id]
+
+    def remove_from_pool_if_exist(self, user_id):
+        if user_id in self._pool:
+            del self._pool[user_id]
+
         self.perform_update()
 
     def perform_update(self):
@@ -52,18 +62,17 @@ class MatchMaker:
                 random_2 = random.choice(pool_items)
                 pool_items.remove(random_2)
                 self._create_match(random_1, random_2)
-            # print("============\n")
 
-    def _create_match(self, channel1, channel2):
-        print(f'{self._pool[channel1]} with {self._pool[channel2]}')
-        attendees_user_ids = [self._pool[channel1],  self._pool[channel2]]
+    def _create_match(self, user_id1, user_id2):
+        print(f'{user_id1} with {user_id2}')
+        attendees_user_ids = [user_id1, user_id2]
         conversation = Conversation.create_conversation(attendees_user_ids)
 
-        del self._pool[channel1]
-        del self._pool[channel2]
-
         if self._matchcreated_callback is not None:
-            self._matchcreated_callback(channel1, channel2, conversation.id)
+            self._matchcreated_callback(self._pool[user_id1], self._pool[user_id2], conversation.id)
+
+        del self._pool[user_id1]
+        del self._pool[user_id2]
 
 
 # def main():

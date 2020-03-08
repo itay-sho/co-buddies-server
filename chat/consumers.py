@@ -14,7 +14,7 @@ base_schema = {
     '$schema': 'http://json-schema.org/draft-07/schema#',
     'type': 'object',
     'properties': {
-        'request_type': {'type': 'string', 'enum': ['send_message', 'receive_message', 'error', 'request_match', 'receive_match', 'disconnect', 'authenticate']},
+        'request_type': {'type': 'string', 'enum': ['send_message', 'receive_message', 'error', 'request_match', 'unrequest_match', 'receive_match', 'disconnect', 'authenticate']},
         'payload': {'type': 'object'},
         'seq': {'type': 'number', 'minimum': 1,  'multipleOf': 1.0},
     },
@@ -64,6 +64,16 @@ request_match_schema = {
     'additionalProperties': False
 }
 
+unrequest_match_schema = {
+    '$schema': 'http://json-schema.org/draft-07/schema#',
+    'type': 'object',
+    'properties': {
+        'user_id': {'type': 'number', 'minimum': 1, 'multipleOf': 1.0},
+    },
+    'required': ['user_id'],
+    'additionalProperties': False
+}
+
 receive_match_schema = {
     '$schema': 'http://json-schema.org/draft-07/schema#',
     'type': 'object',
@@ -99,6 +109,7 @@ payload_dict = {
     'receive_message': receive_message_schema,
     'error': error_schema,
     'request_match': request_match_schema,
+    'unrequest_match': unrequest_match_schema,
     'receive_match': receive_match_schema,
     'disconnect': disconnect_schema,
     'authenticate': authenticate_schema
@@ -183,6 +194,10 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
     async def disconnect(self, close_code):
         if self._is_authenticated:
             group = self.get_channel_group()
+            await self.channel_layer.send(
+                'matchmaking-task',
+                {'type': 'unrequest_match', 'user_id': self.scope['user'].chat_user.id}
+            )
             await self.channel_layer.group_discard(group, self.channel_name)
             await self.send_disconnect_message(group)
 

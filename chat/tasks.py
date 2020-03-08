@@ -9,10 +9,21 @@ class MatchmakingTask(SyncConsumer):
         self.matcher = MatchMaker(self.match_request_found)
 
     def request_match(self, message):
-        self.matcher.add_to_pool(message['channel_name'], message['user_id'])
+        # removing old user channel if there is
+        prev_user_channel = self.matcher.get_user_channel(message['user_id'])
+        if prev_user_channel is not None:
+            async_to_sync(self.channel_layer.send)(
+                prev_user_channel,
+                {'type': 'disconnect'}
+            )
+            self.matcher.remove_from_pool_if_exist(message['user_id'])
 
-    def cancel_match_request(self, message):
-        self.matcher.remove_from_pool(message['channel_name'])
+        # adding new channel
+        self.matcher.add_to_pool(message['user_id'], message['channel_name'])
+
+    def unrequest_match(self, message):
+        print('unrequesting match')
+        self.matcher.remove_from_pool_if_exist(message['user_id'])
 
     def match_request_found(self, channel_name1, channel_name2, conversation_id):
         payload = {'type': 'receive_match', 'conversation_id': conversation_id}
