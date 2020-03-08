@@ -9,5 +9,5 @@ class CustomerRegisterView(RegisterView):
 
         return {
             'key': user.auth_token.key,
-            'id': user.id
+            'id': user.chat_user.id
         }
