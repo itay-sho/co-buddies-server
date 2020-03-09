@@ -126,9 +126,10 @@ class ErrorEnum(enum.Enum):
     SCHEMA_ERROR = enum.auto()
     UNIMPLEMENTED = enum.auto()
     CONVERSATION_NOT_INITIALIZED = enum.auto()
-    TIMEOUT = enum.auto()
-    USER_INACTIVE = enum.auto()
-    INVALID_TOKEN = enum.auto()
+    AUTHENTICATION_TIMEOUT = enum.auto()
+    AUTH_FAIL_USER_INACTIVE = enum.auto()
+    AUTH_FAIL_INVALID_TOKEN = enum.auto()
+    INACTIVENESS_TIMEOUT = enum.auto()
 
     # KEEP LAST
     UNKNOWN_ERROR = enum.auto()
@@ -136,20 +137,37 @@ class ErrorEnum(enum.Enum):
 
 class ChatConsumer(AsyncJsonWebsocketConsumer):
     AUTHENTICATE_TIMEOUT_SECONDS = 3
+    INACTIVENESS_TIMEOUT_SECONDS = 300
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self._conversation_id = None
         self._seq = 0
-
         self._is_authenticated = False
+        self._new_message_flag = True
+
         self._authenticate_timeout_task = asyncio.create_task(self.send_disconnection_due_to_authentication_timeout())
+        self._in_active_timeout = asyncio.create_task(self.send_disconnection_due_to_inactiveness())
 
     async def send_disconnection_due_to_authentication_timeout(self):
         await asyncio.sleep(ChatConsumer.AUTHENTICATE_TIMEOUT_SECONDS)
-        await self.send_error_message(ErrorEnum.TIMEOUT, error_message='disconnecting due to timeout')
+        await self.send_error_message(ErrorEnum.AUTHENTICATION_TIMEOUT, error_message='disconnecting due to authentication timeout')
         await self.close()
+
+    async def send_disconnection_due_to_inactiveness(self):
+        while self.did_got_new_message():
+            await asyncio.sleep(ChatConsumer.INACTIVENESS_TIMEOUT_SECONDS)
+
+        await self.send_error_message(ErrorEnum.INACTIVENESS_TIMEOUT, error_message='disconnecting due inactiveness')
+        await self.close()
+
+    def did_got_new_message(self):
+        did_got_new_message = self._new_message_flag
+        if did_got_new_message:
+            self._new_message_flag = False
+
+        return did_got_new_message
 
     def get_channel_group(self):
         return f'conversation_{self._conversation_id}'
@@ -171,6 +189,7 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
 
     async def receive_json(self, content, **kwargs):
         try:
+            self._new_message_flag = True
             self.validate_content(content)
 
             if not self._is_authenticated and content['request_type'] != 'authenticate':

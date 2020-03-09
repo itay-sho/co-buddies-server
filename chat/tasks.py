@@ -32,11 +32,11 @@ class DBOperationsTask(SyncConsumer):
             user = User.objects.get(id=token.user_id)
 
             if not user.is_active:
-                error_code = ErrorEnum.USER_INACTIVE
+                error_code = ErrorEnum.AUTH_FAIL_USER_INACTIVE
                 error_message = 'Select user inactive'
 
         except Token.DoesNotExist:
-            error_code = ErrorEnum.INVALID_TOKEN
+            error_code = ErrorEnum.AUTH_FAIL_INVALID_TOKEN
             error_message = 'Invalid access token'
 
         finally:
