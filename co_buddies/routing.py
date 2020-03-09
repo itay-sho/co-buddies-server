@@ -5,19 +5,20 @@ from django.urls import re_path
 from channels.security.websocket import AllowedHostsOriginValidator
 
 from chat.consumers import ChatConsumer
-from chat.tasks import MatchmakingTask
+from chat.tasks import MatchmakingTask, DBOperationsTask
 
 websocket_urlpatterns = [
-    re_path(r"^chat$", ChatConsumer),
+    re_path(r'^chat$', ChatConsumer),
 ]
 application = ProtocolTypeRouter({
     # WebSocket chat handler
-    "websocket":
+    'websocket':
         AllowedHostsOriginValidator(
             URLRouter(websocket_urlpatterns)
         ),
-    "channel":
+    'channel':
         ChannelNameRouter({
-            "matchmaking-task": MatchmakingTask,
+            'matchmaking-task': MatchmakingTask,
+            'db-operations-task': DBOperationsTask,
         })
 })

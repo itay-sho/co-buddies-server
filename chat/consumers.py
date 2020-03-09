@@ -2,13 +2,11 @@ import asyncio
 import enum
 import json
 
+from asgiref.sync import sync_to_async
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from rest_framework.authtoken.models import Token
 import jsonschema
-from chat.models import Conversation, Message
-import time
-import threading
 from django.contrib.auth.models import User
 
 base_schema = {
@@ -147,6 +145,9 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
 
         self._conversation_id = None
         self._seq = 0
+        self._db_seq = 0
+
+        self._pending_db_messages = {}
         self._is_authenticated = False
         self._authenticate_timeout_task = asyncio.create_task(self.send_disconnection_due_to_authentication_timeout())
 
@@ -161,6 +162,10 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
     def get_next_seq(self):
         self._seq += 1
         return self._seq
+
+    def get_next_db_seq(self):
+        self._db_seq += 1
+        return self._db_seq
 
     async def update_conversation_id(self, value):
         # TODO: make this function blocking in order to avoid async bugs !
@@ -225,32 +230,48 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
             await self.send_error_message(ErrorEnum.CONVERSATION_NOT_INITIALIZED, "conversation has not initialized yet")
             return
 
-        # validate if the user is allowed to do this operation
-        try:
-            Message.validate_message_creation(author_id=self.scope['user'].chat_user.id, conversation_id=self._conversation_id)
-            message = await Message.create_message_async(
-                author_id=self.scope['user'].chat_user.id,
-                conversation_id=self._conversation_id,
-                text=payload['text']
-            )
+        await self.channel_layer.send(
+            'db-operations-task',
+            {
+                'type': 'create_message',
+                'channel_name': self.channel_name,
+                'text': payload['text'],
+                'conversation_id': self._conversation_id,
+                'author_id': self.scope['user'].chat_user.id,
+                'seq': self.get_next_db_seq(),
+            }
+        )
 
+    async def create_message_response(self, content):
+        error_payload = content['error']
+        error_code = error_payload['payload']['error_code']
+
+        if error_code == ErrorEnum.OK.value:
+            message_payload = content['message']
             content = {
                 'request_type': 'receive_message',
                 # TODO: this is a bug: using one chat sequence number to other.
                 'seq': self.get_next_seq(),
                 'payload': {
-                    'text': message.text,
-                    'conversation_id': message.conversation_id,
-                    'author_id': self.scope['user'].chat_user.id,
-                    'time': time.mktime(message.time.timetuple())
+                    'text': message_payload['text'],
+                    'conversation_id': message_payload['conversation_id'],
+                    'author_id': message_payload['author_id'],
+                    'time': message_payload['time']
                 }
             }
 
             # broadcasting the message
             await self.send_to_group(content)
-
-        except Conversation.DoesNotExist:
-            await self.send_error_message(ErrorEnum.CONVERSATION_CLOSED, 'Conversation has closed', content['seq'])
+        elif error_code == ErrorEnum.CONVERSATION_CLOSED.value:
+            await self.send_error_message(
+                ErrorEnum(error_payload['payload']['error_code']),
+                error_payload['payload']['error_message']
+            )
+            await self.close()
+        else:
+            # fallback
+            await self.send_error_message(ErrorEnum.UNKNOWN_ERROR, 'Disconnecting due to unknown error')
+            await self.close()
 
     async def process__authenticate(self, content):
         access_token = content['payload']['access_token']

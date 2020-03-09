@@ -60,8 +60,8 @@ class Message(models.Model):
         return True
 
     @staticmethod
-    async def create_message_async(author_id, conversation_id, text):
-        return await database_sync_to_async(Message.objects.create)(
+    def create_message(author_id, conversation_id, text):
+        return Message.objects.create(
             author_id=author_id,
             conversation_id=conversation_id,
             text=text
