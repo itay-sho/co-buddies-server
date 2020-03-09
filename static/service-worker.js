@@ -14,7 +14,7 @@
 importScripts("https://storage.googleapis.com/workbox-cdn/releases/4.3.1/workbox-sw.js");
 
 importScripts(
-  "https://co-buddies.co.il/static/precache-manifest.54c0c17829d591df5981fe9e8e1175e9.js"
+  "https://co-buddies.co.il/static/precache-manifest.23f4e32fd33a39f0d1051bfa506812b4.js"
 );
 
 self.addEventListener('message', (event) => {
