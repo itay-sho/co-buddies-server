@@ -137,7 +137,7 @@ class ErrorEnum(enum.Enum):
 
 class ChatConsumer(AsyncJsonWebsocketConsumer):
     AUTHENTICATE_TIMEOUT_SECONDS = 3
-    INACTIVENESS_TIMEOUT_SECONDS = 300
+    INACTIVENESS_TIMEOUT_SECONDS = 180
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
