@@ -3,6 +3,8 @@ from channels.generic.websocket import SyncConsumer
 from chat.match_maker import MatchMaker
 from chat.models import Message, Conversation
 from chat.consumers import ErrorEnum
+from django.contrib.auth.models import User
+from rest_framework.authtoken.models import Token
 import json
 import time
 
@@ -15,6 +17,36 @@ class DBOperationsTask(SyncConsumer):
     def get_next_seq(self):
         self._seq += 1
         return self._seq
+
+    def authenticate(self, content):
+        channel_name = content['channel_name']
+        access_token = content['access_token']
+        response_to = content['seq']
+
+        # initialized to success values, any exception caught should change that
+        error_code = ErrorEnum.OK
+        error_message = ''
+
+        try:
+            token = Token.objects.get(key=access_token)
+            user = User.objects.get(id=token.user_id)
+
+            if not user.is_active:
+                error_code = ErrorEnum.USER_INACTIVE
+                error_message = 'Select user inactive'
+
+        except Token.DoesNotExist:
+            error_code = ErrorEnum.INVALID_TOKEN
+            error_message = 'Invalid access token'
+
+        finally:
+            return_content = self.create_base_return_content('authenticate_response', error_code, error_message, response_to)
+            return_content['chat_user_id'] = user.chat_user.id
+
+            async_to_sync(self.channel_layer.send)(
+                channel_name,
+                return_content
+            )
 
     def create_message(self, content):
         channel_name = content['channel_name']
@@ -42,18 +74,7 @@ class DBOperationsTask(SyncConsumer):
             error_message = 'Conversation has closed'
 
         finally:
-            return_content = {
-                'type': 'create_message_response',
-                'error': {
-                    'request_type': 'error',
-                    'seq': self.get_next_seq(),
-                    'payload': {
-                        'error_code': error_code.value,
-                        'error_message': error_message,
-                        'response_to': response_to
-                    }
-                }
-            }
+            return_content = self.create_base_return_content('create_message_response', error_code, error_message, response_to)
 
             if message is not None:
                 return_content['message'] = {
@@ -67,6 +88,24 @@ class DBOperationsTask(SyncConsumer):
                 channel_name,
                 return_content
             )
+
+    def create_base_return_content(self, message_type, error_code, error_message, response_to=None):
+        error_message = {
+            'type': message_type,
+            'error': {
+                'request_type': 'error',
+                'seq': self.get_next_seq(),
+                'payload': {
+                    'error_code': error_code.value,
+                    'error_message': error_message
+                }
+            }
+        }
+
+        if response_to is not None:
+            error_message['error']['response_to'] = response_to
+
+        return error_message
 
 
 class MatchmakingTask(SyncConsumer):
