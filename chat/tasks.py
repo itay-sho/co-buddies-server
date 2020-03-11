@@ -19,7 +19,7 @@ class ConversationUserDictionary:
         self._users_to_conversations_dict = {}
         self._conversations_to_user_dict = {}
 
-    def remove_user_from_conversation(self, user_id, conversation_id, is_safe=False):
+    def _remove_from_both_dicts(self, user_id, conversation_id, is_safe):
         if is_safe:
             self._conversations_to_user_dict[conversation_id].discard(user_id)
             self._users_to_conversations_dict.pop(user_id, '')
@@ -27,10 +27,15 @@ class ConversationUserDictionary:
             self._conversations_to_user_dict[conversation_id].remove(user_id)
             del self._users_to_conversations_dict[user_id]
 
+    def remove_user_from_conversation(self, user_id, conversation_id, is_safe=False):
+        self._remove_from_both_dicts(user_id, conversation_id, is_safe)
+
         if (
-                len(self._conversations_to_user_dict[conversation_id]) == 0 and
+                len(self._conversations_to_user_dict[conversation_id]) <= 1 and
                 conversation_id != ConversationUserDictionary.LOBBY_CONVERSATION_ID
         ):
+            for other_user_id in self._conversations_to_user_dict[conversation_id].copy():
+                self._remove_from_both_dicts(other_user_id, conversation_id, is_safe)
             del self._conversations_to_user_dict[conversation_id]
 
             # closing conversation
