@@ -10,7 +10,7 @@ base_schema = {
     '$schema': 'http://json-schema.org/draft-07/schema#',
     'type': 'object',
     'properties': {
-        'request_type': {'type': 'string', 'enum': ['send_message', 'receive_message', 'error', 'request_match', 'unrequest_match', 'receive_match', 'disconnect', 'authenticate']},
+        'request_type': {'type': 'string', 'enum': ['send_message', 'receive_message', 'error', 'request_match', 'unrequest_match', 'receive_match', 'disconnect', 'authenticate', 'set_pn_token']},
         'payload': {'type': 'object'},
         'seq': {'type': 'number', 'minimum': 1,  'multipleOf': 1.0},
     },
@@ -70,6 +70,16 @@ unrequest_match_schema = {
     'additionalProperties': False
 }
 
+set_pn_token_schema = {
+    '$schema': 'http://json-schema.org/draft-07/schema#',
+    'type': 'object',
+    'properties': {
+        'token': {'type': 'string', 'maxLength': 300},
+    },
+    'required': ['token'],
+    'additionalProperties': False
+}
+
 receive_match_schema = {
     '$schema': 'http://json-schema.org/draft-07/schema#',
     'type': 'object',
@@ -115,7 +125,8 @@ payload_dict = {
     'unrequest_match': unrequest_match_schema,
     'receive_match': receive_match_schema,
     'disconnect': disconnect_schema,
-    'authenticate': authenticate_schema
+    'authenticate': authenticate_schema,
+    'set_pn_token': set_pn_token_schema
 }
 
 
@@ -146,6 +157,7 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         self._seq = 0
         self._is_authenticated = False
         self._new_message_flag = True
+        self._has_push_notifications = False
 
         self._authenticate_timeout_task = asyncio.create_task(self.send_disconnection_due_to_authentication_timeout())
         self._in_active_timeout = asyncio.create_task(self.send_disconnection_due_to_inactiveness())
@@ -223,6 +235,11 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
                 'matchmaking-task',
                 {'type': 'unrequest_match', 'user_id': self.scope['chat_user_id']}
             )
+            if self._has_push_notifications:
+                await self.channel_layer.send(
+                    'pn-task',
+                    {'type': 'remove_pn_listener', 'channel_name': self.channel_name}
+                )
             await self.channel_layer.group_discard(group, self.channel_name)
             await self.send_disconnect_message(group)
 
@@ -233,6 +250,9 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         payload_schema = payload_dict[content['request_type']]
 
         jsonschema.validate(content['payload'], payload_schema)
+
+    async def pn_channel_removed(self, content):
+        self._has_push_notifications = False
 
     async def process__send_message(self, content):
         payload = content['payload']
@@ -251,6 +271,18 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
                 'seq': content['seq'],
             }
         )
+
+    async def process__set_pn_token(self, content):
+        payload = content['payload']
+        await self.channel_layer.send(
+            'pn-task',
+            {
+                'type': 'add_pn_listener',
+                'channel_name': self.channel_name,
+                'token': payload['token']
+            }
+        )
+        self._has_push_notifications = True
 
     async def create_message_response(self, content):
         error_payload = content['error']
@@ -322,6 +354,17 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         )
 
     async def chat_message(self, event):
+        if event['content']['request_type'] == 'receive_message' and self._has_push_notifications:
+            await self.channel_layer.send(
+                'pn-task',
+                {
+                    'type': 'send_pn_message',
+                    'channel_name': self.channel_name,
+                    'title': 'הודעה חדשה',
+                    'body': f'{event["content"]["payload"]["text"]}'
+                }
+            )
+
         await self.send_json(event['content'])
 
     async def process__default(self, content):

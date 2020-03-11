@@ -7,6 +7,52 @@ from django.contrib.auth.models import User
 from rest_framework.authtoken.models import Token
 import json
 import time
+import firebase_admin
+from firebase_admin import messaging
+
+
+class PushNotificationsTask(SyncConsumer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._channel_name_to_token_dict = {}
+        firebase_admin.initialize_app()
+
+    def add_pn_listener(self, content):
+        channel_name = content['channel_name']
+        token = content['token']
+
+        self._channel_name_to_token_dict[channel_name] = token
+
+    def remove_pn_listener(self, content):
+        channel_name = content['channel_name']
+        if channel_name in self._channel_name_to_token_dict:
+            del self._channel_name_to_token_dict[channel_name]
+
+    def send_pn_message(self, content):
+        channel_name = content['channel_name']
+        title = content['title']
+        body = content['body']
+        has_error_occurred = True
+        try:
+            message = messaging.Message(
+                data={
+                    'title': title,
+                    'body': body,
+                    'url': 'https://co-buddies.co.il/'
+                },
+                token=self._channel_name_to_token_dict[channel_name],
+            )
+            messaging.send(message)
+
+            # everything succeeded, changing error to false
+            has_error_occurred = False
+        except messaging.UnregisteredError:
+            if channel_name in self._channel_name_to_token_dict:
+                del self._channel_name_to_token_dict[channel_name]
+        finally:
+            if has_error_occurred:
+                async_to_sync(self.channel_layer.send)(channel_name, {'type': 'pn_channel_removed'})
+            print('removing the channel')
 
 
 class DBOperationsTask(SyncConsumer):

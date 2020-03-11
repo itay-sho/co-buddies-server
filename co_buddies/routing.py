@@ -5,7 +5,7 @@ from django.urls import re_path
 from channels.security.websocket import AllowedHostsOriginValidator
 
 from chat.consumers import ChatConsumer
-from chat.tasks import MatchmakingTask, DBOperationsTask
+from chat.tasks import *
 
 websocket_urlpatterns = [
     re_path(r'^chat$', ChatConsumer),
@@ -20,5 +20,6 @@ application = ProtocolTypeRouter({
         ChannelNameRouter({
             'matchmaking-task': MatchmakingTask,
             'db-operations-task': DBOperationsTask,
+            'pn-task': PushNotificationsTask,
         })
 })

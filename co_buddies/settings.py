@@ -30,9 +30,6 @@ if os.environ['ENV'] == 'dev':
 
 ALLOWED_HOSTS = ['*']
 
-# Application definition
-os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = "true"
-
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',

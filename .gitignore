@@ -2,3 +2,5 @@
 /venv
 /staticfiles
 *.sqlite3
+
+google-credentials.json
