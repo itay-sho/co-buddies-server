@@ -1,9 +1,9 @@
 import asyncio
-import enum
 import json
-from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 import jsonschema
+from .tasks import ConversationManagerTask
+from .enums import ErrorEnum
 
 
 base_schema = {
@@ -130,22 +130,6 @@ payload_dict = {
 }
 
 
-class ErrorEnum(enum.Enum):
-    OK = 0
-    UNAUTHENTICATED = 100
-    CONVERSATION_CLOSED = enum.auto()
-    SCHEMA_ERROR = enum.auto()
-    UNIMPLEMENTED = enum.auto()
-    CONVERSATION_NOT_INITIALIZED = enum.auto()
-    AUTHENTICATION_TIMEOUT = enum.auto()
-    AUTH_FAIL_USER_INACTIVE = enum.auto()
-    AUTH_FAIL_INVALID_TOKEN = enum.auto()
-    INACTIVENESS_TIMEOUT = enum.auto()
-
-    # KEEP LAST
-    UNKNOWN_ERROR = enum.auto()
-
-
 class ChatConsumer(AsyncJsonWebsocketConsumer):
     AUTHENTICATE_TIMEOUT_SECONDS = 3
     INACTIVENESS_TIMEOUT_SECONDS = 180
@@ -154,6 +138,7 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         super().__init__(*args, **kwargs)
 
         self._conversation_id = None
+        self._chat_user_id = None
         self._seq = 0
         self._is_authenticated = False
         self._new_message_flag = True
@@ -181,20 +166,28 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
 
         return did_got_new_message
 
-    def get_channel_group(self):
-        return f'conversation_{self._conversation_id}'
-
     def get_next_seq(self):
         self._seq += 1
         return self._seq
 
     async def update_conversation_id(self, value):
-        # TODO: make this function blocking in order to avoid async bugs !
-
         if self._conversation_id != value:
-            await self.channel_layer.group_discard(self.get_channel_group(), self.channel_name)
+            if self._conversation_id is not None:
+                await self.channel_layer.group_discard(
+                    ConversationManagerTask.get_conversation_channel(self._conversation_id),
+                    self.channel_name
+                )
+
             self._conversation_id = value
-            await self.channel_layer.group_add(self.get_channel_group(), self.channel_name)
+            await self.channel_layer.send(
+                'conversation-manager-task',
+                {
+                    'type': 'join_conversation',
+                    'user_id': self._chat_user_id,
+                    'conversation_id': self._conversation_id
+                }
+            )
+            await self.channel_layer.group_add(ConversationManagerTask.get_conversation_channel(self._conversation_id), self.channel_name)
 
     async def connect(self):
         await self.accept()
@@ -230,10 +223,17 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
 
     async def disconnect(self, close_code):
         if self._is_authenticated:
-            group = self.get_channel_group()
+            group = ConversationManagerTask.get_conversation_channel(self._conversation_id)
+            # sending disconnection to other user BEFORE closing all the sockets & configurations
+            await self.send_disconnect_message()
+
             await self.channel_layer.send(
                 'matchmaking-task',
-                {'type': 'unrequest_match', 'user_id': self.scope['chat_user_id']}
+                {'type': 'unrequest_match', 'user_id': self._chat_user_id}
+            )
+            await self.channel_layer.send(
+                'conversation-manager-task',
+                {'type': 'user_disconnect', 'user_id': self._chat_user_id}
             )
             if self._has_push_notifications:
                 await self.channel_layer.send(
@@ -241,11 +241,11 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
                     {'type': 'remove_pn_listener', 'channel_name': self.channel_name}
                 )
             await self.channel_layer.group_discard(group, self.channel_name)
-            await self.send_disconnect_message(group)
 
         await self.close()
 
-    def validate_content(self, content):
+    @classmethod
+    def validate_content(cls, content):
         jsonschema.validate(content, base_schema)
         payload_schema = payload_dict[content['request_type']]
 
@@ -267,7 +267,7 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
                 'channel_name': self.channel_name,
                 'text': payload['text'],
                 'conversation_id': self._conversation_id,
-                'author_id': self.scope['chat_user_id'],
+                'author_id': self._chat_user_id,
                 'seq': content['seq'],
             }
         )
@@ -330,7 +330,7 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         if error_code == ErrorEnum.OK.value:
             # login success
             self._authenticate_timeout_task.cancel()
-            self.scope['chat_user_id'] = content['chat_user_id']
+            self._chat_user_id = content['chat_user_id']
             self._is_authenticated = True
             await self.send_error_message(response_to=error_payload['response_to'])
         else:
@@ -341,15 +341,13 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
             )
             await self.close()
 
-    async def send_to_group(self, content, group=None):
-        if group is None:
-            group = self.get_channel_group()
-
-        await self.channel_layer.group_send(
-            group,
+    async def send_to_group(self, content):
+        await self.channel_layer.send(
+            'conversation-manager-task',
             {
-                'type': 'chat.message',
-                'content': content
+                'type': 'broadcast_message_to_conversation',
+                'user_id': self._chat_user_id,
+                'message': content
             }
         )
 
@@ -377,7 +375,7 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
     async def process__request_match(self, content):
         await self.channel_layer.send(
             'matchmaking-task',
-            {'type': 'request_match', 'channel_name': self.channel_name, 'user_id': self.scope['chat_user_id']}
+            {'type': 'request_match', 'channel_name': self.channel_name, 'user_id': self._chat_user_id}
         )
         await self.send_error_message(response_to=content['seq'])
 
@@ -412,14 +410,14 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
 
         await self.send_json(content)
 
-    async def send_disconnect_message(self, group):
+    async def send_disconnect_message(self):
         content = {
             'request_type': 'disconnect',
             # TODO: this is a bug: using one chat sequence number to other.
             'seq': self.get_next_seq(),
             'payload': {
-                'user_id': self.scope['chat_user_id']
+                'user_id': self._chat_user_id
             }
         }
 
-        await self.send_to_group(content, group)
+        await self.send_to_group(content)

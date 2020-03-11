@@ -21,5 +21,6 @@ application = ProtocolTypeRouter({
             'matchmaking-task': MatchmakingTask,
             'db-operations-task': DBOperationsTask,
             'pn-task': PushNotificationsTask,
+            'conversation-manager-task': ConversationManagerTask
         })
 })

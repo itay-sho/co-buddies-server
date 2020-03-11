@@ -2,13 +2,103 @@ from asgiref.sync import async_to_sync
 from channels.generic.websocket import SyncConsumer
 from chat.match_maker import MatchMaker
 from chat.models import Message, Conversation
-from chat.consumers import ErrorEnum
 from django.contrib.auth.models import User
 from rest_framework.authtoken.models import Token
+from channels.layers import get_channel_layer
 import json
 import time
 import firebase_admin
 from firebase_admin import messaging
+from .enums import ErrorEnum
+
+
+class ConversationUserDictionary:
+    LOBBY_CONVERSATION_ID = 1
+
+    def __init__(self):
+        self._users_to_conversations_dict = {}
+        self._conversations_to_user_dict = {}
+
+    def remove_user_from_conversation(self, user_id, conversation_id, is_safe=False):
+        if is_safe:
+            self._conversations_to_user_dict[conversation_id].discard(user_id)
+            self._users_to_conversations_dict.pop(user_id, '')
+        else:
+            self._conversations_to_user_dict[conversation_id].remove(user_id)
+            del self._users_to_conversations_dict[user_id]
+
+        if (
+                len(self._conversations_to_user_dict[conversation_id]) == 0 and
+                conversation_id != ConversationUserDictionary.LOBBY_CONVERSATION_ID
+        ):
+            del self._conversations_to_user_dict[conversation_id]
+
+            # closing conversation
+            conversation = Conversation.objects.get(id=conversation_id)
+            conversation.is_open = False
+            conversation.save()
+
+    def add_user_to_conversation(self, user_id, conversation_id):
+        if conversation_id not in self._conversations_to_user_dict:
+            self._conversations_to_user_dict[conversation_id] = set([])
+
+        self._conversations_to_user_dict[conversation_id].add(user_id)
+        self._users_to_conversations_dict[user_id] = conversation_id
+
+    def user_disconnect(self, user_id):
+        self.remove_user_from_conversation(user_id, self._users_to_conversations_dict[user_id])
+
+    def conversation_close(self, conversation_id):
+        for user in self._conversations_to_user_dict[conversation_id].copy():
+            self.remove_user_from_conversation(user, conversation_id)
+
+    def leave_any_previous_conversations_and_join(self, user_id, conversation_id):
+        if user_id in self._users_to_conversations_dict:
+            self.remove_user_from_conversation(user_id, self._users_to_conversations_dict[user_id])
+
+        self.add_user_to_conversation(user_id, conversation_id)
+
+    def get_conversation_attendees(self, conversation_id):
+        return self._conversations_to_user_dict[conversation_id]
+
+    def get_user_conversation(self, user_id):
+        return self._users_to_conversations_dict[user_id]
+
+
+class ConversationManagerTask(SyncConsumer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._conversation_user_dictionary = ConversationUserDictionary()
+        self.channel_layer = get_channel_layer()
+
+    @classmethod
+    def get_conversation_channel(cls, conversation_id):
+        return f'conversation_{conversation_id}'
+
+    def user_disconnect(self, content):
+        user_id = content['user_id']
+        self._conversation_user_dictionary.user_disconnect(user_id)
+
+    def leave_conversation(self, content):
+        user_id = content['user_id']
+        conversation_id = content['conversation_id']
+        self._conversation_user_dictionary.remove_user_from_conversation(user_id, conversation_id)
+
+    def join_conversation(self, content):
+        user_id = content['user_id']
+        conversation_id = content['conversation_id']
+        self._conversation_user_dictionary.leave_any_previous_conversations_and_join(user_id, conversation_id)
+
+    def broadcast_message_to_conversation(self, content):
+        conversation_id = self._conversation_user_dictionary.get_user_conversation(content['user_id'])
+        message = content['message']
+        async_to_sync(self.channel_layer.group_send)(
+            self.get_conversation_channel(conversation_id),
+            {
+                'type': 'chat.message',
+                'content': message
+            }
+        )
 
 
 class PushNotificationsTask(SyncConsumer):
@@ -72,6 +162,7 @@ class DBOperationsTask(SyncConsumer):
         # initialized to success values, any exception caught should change that
         error_code = ErrorEnum.OK
         error_message = ''
+        user = None
 
         try:
             token = Token.objects.get(key=access_token)
@@ -87,7 +178,8 @@ class DBOperationsTask(SyncConsumer):
 
         finally:
             return_content = self.create_base_return_content('authenticate_response', error_code, error_message, response_to)
-            return_content['chat_user_id'] = user.chat_user.id
+            if user is not None:
+                return_content['chat_user_id'] = user.chat_user.id
 
             async_to_sync(self.channel_layer.send)(
                 channel_name,
