@@ -351,19 +351,25 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
             }
         )
 
-    async def chat_message(self, event):
-        if event['content']['request_type'] == 'receive_message' and self._has_push_notifications:
+    async def chat_message(self, content):
+        if content['content']['request_type'] == 'receive_message' and self._has_push_notifications:
             await self.channel_layer.send(
                 'pn-task',
                 {
                     'type': 'send_pn_message',
                     'channel_name': self.channel_name,
                     'title': 'הודעה חדשה',
-                    'body': f'{event["content"]["payload"]["text"]}'
+                    'body': f'{content["content"]["payload"]["text"]}'
                 }
             )
 
-        await self.send_json(event['content'])
+        await self.send_json(content['content'])
+
+    async def chat_conversation_closed(self, content):
+        await self.channel_layer.group_discard(
+            ConversationManagerTask.get_conversation_channel(self._conversation_id),
+            self.channel_name
+        )
 
     async def process__default(self, content):
         await self.send_error_message(

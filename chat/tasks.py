@@ -27,6 +27,9 @@ class ConversationUserDictionary:
             self._conversations_to_user_dict[conversation_id].remove(user_id)
             del self._users_to_conversations_dict[user_id]
 
+    '''
+    return conversation_id if conversation was closed due to this operation, None otherwise
+    '''
     def remove_user_from_conversation(self, user_id, conversation_id, is_safe=False):
         self._remove_from_both_dicts(user_id, conversation_id, is_safe)
 
@@ -34,14 +37,14 @@ class ConversationUserDictionary:
                 len(self._conversations_to_user_dict[conversation_id]) <= 1 and
                 conversation_id != ConversationUserDictionary.LOBBY_CONVERSATION_ID
         ):
-            for other_user_id in self._conversations_to_user_dict[conversation_id].copy():
-                self._remove_from_both_dicts(other_user_id, conversation_id, is_safe)
-            del self._conversations_to_user_dict[conversation_id]
+            self._close_conversation(conversation_id, is_safe)
+            return conversation_id
 
-            # closing conversation
-            conversation = Conversation.objects.get(id=conversation_id)
-            conversation.is_open = False
-            conversation.save()
+    def _close_conversation(self, conversation_id, is_safe):
+        for user_id in self._conversations_to_user_dict[conversation_id].copy():
+            self._remove_from_both_dicts(user_id, conversation_id, is_safe)
+
+        del self._conversations_to_user_dict[conversation_id]
 
     def add_user_to_conversation(self, user_id, conversation_id):
         if conversation_id not in self._conversations_to_user_dict:
@@ -51,7 +54,7 @@ class ConversationUserDictionary:
         self._users_to_conversations_dict[user_id] = conversation_id
 
     def user_disconnect(self, user_id):
-        self.remove_user_from_conversation(user_id, self._users_to_conversations_dict[user_id])
+        return self.remove_user_from_conversation(user_id, self._users_to_conversations_dict[user_id])
 
     def conversation_close(self, conversation_id):
         for user in self._conversations_to_user_dict[conversation_id].copy():
@@ -82,12 +85,32 @@ class ConversationManagerTask(SyncConsumer):
 
     def user_disconnect(self, content):
         user_id = content['user_id']
-        self._conversation_user_dictionary.user_disconnect(user_id)
+        closed_conversation_id = self._conversation_user_dictionary.user_disconnect(user_id)
+        if closed_conversation_id is not None:
+            self._close_conversation(closed_conversation_id)
 
     def leave_conversation(self, content):
         user_id = content['user_id']
         conversation_id = content['conversation_id']
-        self._conversation_user_dictionary.remove_user_from_conversation(user_id, conversation_id)
+        closed_conversation_id = self._conversation_user_dictionary.remove_user_from_conversation(
+            user_id,
+            conversation_id
+        )
+
+        if closed_conversation_id is not None:
+            self._close_conversation(closed_conversation_id)
+
+    def _close_conversation(self, conversation_id):
+        conversation = Conversation.objects.get(id=conversation_id)
+        conversation.is_open = False
+        conversation.save()
+
+        async_to_sync(self.channel_layer.group_send)(
+            self.get_conversation_channel(conversation_id),
+            {
+                'type': 'chat.conversation_closed'
+            }
+        )
 
     def join_conversation(self, content):
         user_id = content['user_id']
@@ -96,6 +119,7 @@ class ConversationManagerTask(SyncConsumer):
 
     def broadcast_message_to_conversation(self, content):
         conversation_id = self._conversation_user_dictionary.get_user_conversation(content['user_id'])
+
         message = content['message']
         async_to_sync(self.channel_layer.group_send)(
             self.get_conversation_channel(conversation_id),
