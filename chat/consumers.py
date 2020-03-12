@@ -4,6 +4,7 @@ from channels.generic.websocket import AsyncJsonWebsocketConsumer
 import jsonschema
 from .tasks import ConversationManagerTask
 from .enums import ErrorEnum
+from .conversation_user_dictionary import ConversationUserDictionary
 
 
 base_schema = {
@@ -242,8 +243,6 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
                 )
             await self.channel_layer.group_discard(group, self.channel_name)
 
-        await self.close()
-
     @classmethod
     def validate_content(cls, content):
         jsonschema.validate(content, base_schema)
@@ -384,6 +383,13 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
             {'type': 'request_match', 'channel_name': self.channel_name, 'user_id': self._chat_user_id}
         )
         await self.send_error_message(response_to=content['seq'])
+
+        # moving to lobby until response is given
+        await self.move_to_lobby()
+
+    async def move_to_lobby(self):
+        await self.update_conversation_id(ConversationUserDictionary.LOBBY_CONVERSATION_ID)
+        await self.send_receive_match(ConversationUserDictionary.LOBBY_CONVERSATION_ID, {})
 
     async def send_json(self, content, close=False):
         self.validate_content(content)

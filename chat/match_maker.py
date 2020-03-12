@@ -46,22 +46,30 @@ class MatchMaker:
         # self.seek_matches()
         pass
 
+    def send_seek_message(self, message):
+        pass
+
     def seek_matches(self):
         while self._should_matchmake:
-            time.sleep(1)
+            for minutes_left in range(3, 0, -1):
+                self.send_seek_message(minutes_left)
+                time.sleep(5)
 
-            pool_items = list(self._pool.keys())
-            while len(pool_items) > 0:
-                random_1 = random.choice(pool_items)
-                pool_items.remove(random_1)
+                if minutes_left > 1:
+                    continue
 
-                if len(pool_items) == 0:
-                    print(f'{random_1} alone :-(')
-                    break
+                pool_items = list(self._pool.keys())
+                while len(pool_items) > 0:
+                    random_1 = random.choice(pool_items)
+                    pool_items.remove(random_1)
 
-                random_2 = random.choice(pool_items)
-                pool_items.remove(random_2)
-                self._create_match(random_1, random_2)
+                    if len(pool_items) == 0:
+                        print(f'{random_1} alone :-(')
+                        break
+
+                    random_2 = random.choice(pool_items)
+                    pool_items.remove(random_2)
+                    self._create_match(random_1, random_2)
 
     def _create_match(self, user_id1, user_id2):
         print(f'{user_id1} with {user_id2}')
