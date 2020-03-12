@@ -3,7 +3,7 @@ class ConversationUserDictionary:
 
     def __init__(self):
         self._users_to_conversations_dict = {}
-        self._conversations_to_user_dict = {}
+        self._conversations_to_user_dict = {ConversationUserDictionary.LOBBY_CONVERSATION_ID: set([])}
 
     def _remove_from_both_dicts(self, user_id, conversation_id, is_safe):
         if is_safe:

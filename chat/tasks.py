@@ -1,7 +1,7 @@
 from asgiref.sync import async_to_sync
 from channels.generic.websocket import SyncConsumer
 from chat.match_maker import MatchMaker
-from chat.models import Message, Conversation
+from chat.models import Message, Conversation, ChatUser
 from django.contrib.auth.models import User
 from rest_framework.authtoken.models import Token
 from channels.layers import get_channel_layer
@@ -22,6 +22,28 @@ class ConversationManagerTask(SyncConsumer):
     @classmethod
     def get_conversation_channel(cls, conversation_id):
         return f'conversation_{conversation_id}'
+
+    def _create_lobby_attendees_dict(self):
+        lobby_attendees_ids = self._conversation_user_dictionary.get_conversation_attendees(ConversationUserDictionary.LOBBY_CONVERSATION_ID)
+        if len(lobby_attendees_ids) > 0:
+            return {
+                attendee.id: attendee.name
+                for attendee in
+                ChatUser.objects.only('id', 'name').filter(id__in=lobby_attendees_ids)
+            }
+        return {}
+
+    def request_lobby_attendees_list(self, content):
+        channel_name = content['channel_name']
+        attendees_dict = self._create_lobby_attendees_dict()
+
+        async_to_sync(self.channel_layer.send)(
+            channel_name,
+            {
+                'type': 'response_lobby_attendees_list',
+                'attendees': json.dumps(attendees_dict)
+            }
+        )
 
     def user_disconnect(self, content):
         user_id = content['user_id']
@@ -116,7 +138,7 @@ class PushNotificationsTask(SyncConsumer):
         finally:
             if has_error_occurred:
                 async_to_sync(self.channel_layer.send)(channel_name, {'type': 'pn_channel_removed'})
-            print('removing the channel')
+                print('removing the pn channel')
 
 
 class DBOperationsTask(SyncConsumer):
@@ -151,7 +173,7 @@ class DBOperationsTask(SyncConsumer):
             error_message = 'Invalid access token'
 
         finally:
-            return_content = self.create_base_return_content('authenticate_response', error_code, error_message, response_to)
+            return_content = self._create_base_return_content('authenticate_response', error_code, error_message, response_to)
             if user is not None:
                 return_content['chat_user_id'] = user.chat_user.id
 
@@ -186,7 +208,7 @@ class DBOperationsTask(SyncConsumer):
             error_message = 'Conversation has closed'
 
         finally:
-            return_content = self.create_base_return_content('create_message_response', error_code, error_message, response_to)
+            return_content = self._create_base_return_content('create_message_response', error_code, error_message, response_to)
 
             if message is not None:
                 return_content['message'] = {
@@ -201,7 +223,7 @@ class DBOperationsTask(SyncConsumer):
                 return_content
             )
 
-    def create_base_return_content(self, message_type, error_code, error_message, response_to=None):
+    def _create_base_return_content(self, message_type, error_code, error_message, response_to=None):
         error_message = {
             'type': message_type,
             'error': {

@@ -384,12 +384,22 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         )
         await self.send_error_message(response_to=content['seq'])
 
-        # moving to lobby until response is given
-        await self.move_to_lobby()
+        await self.request_lobby_attendees_list()
 
-    async def move_to_lobby(self):
+    async def request_lobby_attendees_list(self):
+        await self.channel_layer.send(
+            'conversation-manager-task',
+            {'type': 'request_lobby_attendees_list', 'channel_name': self.channel_name}
+        )
+
+    async def response_lobby_attendees_list(self, content):
+        attendees = json.loads(content['attendees'])
+        # moving to lobby until response is given
+        await self.move_to_lobby(attendees)
+
+    async def move_to_lobby(self, attendees):
         await self.update_conversation_id(ConversationUserDictionary.LOBBY_CONVERSATION_ID)
-        await self.send_receive_match(ConversationUserDictionary.LOBBY_CONVERSATION_ID, {})
+        await self.send_receive_match(ConversationUserDictionary.LOBBY_CONVERSATION_ID, attendees)
 
     async def send_json(self, content, close=False):
         self.validate_content(content)
