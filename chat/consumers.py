@@ -11,7 +11,7 @@ base_schema = {
     '$schema': 'http://json-schema.org/draft-07/schema#',
     'type': 'object',
     'properties': {
-        'request_type': {'type': 'string', 'enum': ['send_message', 'receive_message', 'error', 'request_match', 'unrequest_match', 'receive_match', 'disconnect', 'authenticate', 'set_pn_token']},
+        'request_type': {'type': 'string', 'enum': ['send_message', 'receive_message', 'error', 'request_match', 'unrequest_match', 'receive_match', 'leave', 'join', 'authenticate', 'set_pn_token']},
         'payload': {'type': 'object'},
         'seq': {'type': 'number', 'minimum': 1,  'multipleOf': 1.0},
     },
@@ -98,11 +98,22 @@ receive_match_schema = {
     'additionalProperties': False
 }
 
-disconnect_schema = {
+leave_schema = {
     '$schema': 'http://json-schema.org/draft-07/schema#',
     'type': 'object',
     'properties': {
         'user_id': {'type': 'number', 'minimum': 1, 'multipleOf': 1.0},
+    },
+    'required': ['user_id'],
+    'additionalProperties': False
+}
+
+join_schema = {
+    '$schema': 'http://json-schema.org/draft-07/schema#',
+    'type': 'object',
+    'properties': {
+        'user_id': {'type': 'number', 'minimum': 1, 'multipleOf': 1.0},
+        'name': {'type': 'string', 'maxLength': 100}
     },
     'required': ['user_id'],
     'additionalProperties': False
@@ -125,7 +136,8 @@ payload_dict = {
     'request_match': request_match_schema,
     'unrequest_match': unrequest_match_schema,
     'receive_match': receive_match_schema,
-    'disconnect': disconnect_schema,
+    'leave': leave_schema,
+    'join': join_schema,
     'authenticate': authenticate_schema,
     'set_pn_token': set_pn_token_schema
 }
@@ -140,6 +152,7 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
 
         self._conversation_id = None
         self._chat_user_id = None
+        self._chat_user_name = None
         self._seq = 0
         self._is_authenticated = False
         self._new_message_flag = True
@@ -219,6 +232,9 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         conversation_id = content['conversation_id']
         attendees = json.loads(content['attendees'])
 
+        if self._conversation_id is not None:
+            await self.send_leave_message()
+
         await self.update_conversation_id(conversation_id)
         await self.send_receive_match(conversation_id, attendees)
 
@@ -226,7 +242,7 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         if self._is_authenticated:
             group = ConversationManagerTask.get_conversation_channel(self._conversation_id)
             # sending disconnection to other user BEFORE closing all the sockets & configurations
-            await self.send_disconnect_message()
+            await self.send_leave_message()
 
             await self.channel_layer.send(
                 'matchmaking-task',
@@ -330,6 +346,7 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
             # login success
             self._authenticate_timeout_task.cancel()
             self._chat_user_id = content['chat_user_id']
+            self._chat_user_name = content['chat_user_name']
             self._is_authenticated = True
             await self.send_error_message(response_to=error_payload['response_to'])
         else:
@@ -398,8 +415,18 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         await self.move_to_lobby(attendees)
 
     async def move_to_lobby(self, attendees):
+        connect_message = {
+            'request_type': 'join',
+            # TODO: this is a bug: using one chat sequence number to other.
+            'seq': self.get_next_seq(),
+            'payload': {
+                'user_id': self._chat_user_id,
+                'name': self._chat_user_name
+            }
+        }
         await self.update_conversation_id(ConversationUserDictionary.LOBBY_CONVERSATION_ID)
         await self.send_receive_match(ConversationUserDictionary.LOBBY_CONVERSATION_ID, attendees)
+        await self.send_to_group(connect_message)
 
     async def send_json(self, content, close=False):
         self.validate_content(content)
@@ -432,9 +459,9 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
 
         await self.send_json(content)
 
-    async def send_disconnect_message(self):
+    async def send_leave_message(self):
         content = {
-            'request_type': 'disconnect',
+            'request_type': 'leave',
             # TODO: this is a bug: using one chat sequence number to other.
             'seq': self.get_next_seq(),
             'payload': {

@@ -80,13 +80,9 @@ class ConversationManagerTask(SyncConsumer):
         self._conversation_user_dictionary.leave_any_previous_conversations_and_join(user_id, conversation_id)
 
     def broadcast_message_to_conversation(self, content):
-        try:
-            conversation_id = self._conversation_user_dictionary.get_user_conversation(content['user_id'])
+        conversation_id = self._conversation_user_dictionary.get_user_conversation(content['user_id'])
 
-        except KeyError:
-            print(':(')
-
-        else:
+        if conversation_id is not None:
             message = content['message']
             async_to_sync(self.channel_layer.group_send)(
                 self.get_conversation_channel(conversation_id),
@@ -176,6 +172,7 @@ class DBOperationsTask(SyncConsumer):
             return_content = self._create_base_return_content('authenticate_response', error_code, error_message, response_to)
             if user is not None:
                 return_content['chat_user_id'] = user.chat_user.id
+                return_content['chat_user_name'] = user.chat_user.name
 
             async_to_sync(self.channel_layer.send)(
                 channel_name,

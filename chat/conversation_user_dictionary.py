@@ -56,4 +56,5 @@ class ConversationUserDictionary:
         return self._conversations_to_user_dict[conversation_id]
 
     def get_user_conversation(self, user_id):
-        return self._users_to_conversations_dict[user_id]
+        if user_id in self._users_to_conversations_dict:
+            return self._users_to_conversations_dict[user_id]
