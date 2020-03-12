@@ -1,26 +1,26 @@
 {
   "files": {
-    "main.css": "https://co-buddies.co.il/static/static/css/main.58b3813b.chunk.css",
-    "main.js": "https://co-buddies.co.il/static/static/js/main.7420c036.chunk.js",
-    "main.js.map": "https://co-buddies.co.il/static/static/js/main.7420c036.chunk.js.map",
+    "main.css": "https://co-buddies.co.il/static/static/css/main.d16c7c10.chunk.css",
+    "main.js": "https://co-buddies.co.il/static/static/js/main.20ff2b3b.chunk.js",
+    "main.js.map": "https://co-buddies.co.il/static/static/js/main.20ff2b3b.chunk.js.map",
     "runtime-main.js": "https://co-buddies.co.il/static/static/js/runtime-main.0e0093ee.js",
     "runtime-main.js.map": "https://co-buddies.co.il/static/static/js/runtime-main.0e0093ee.js.map",
     "static/css/2.89f067aa.chunk.css": "https://co-buddies.co.il/static/static/css/2.89f067aa.chunk.css",
-    "static/js/2.6a555f0f.chunk.js": "https://co-buddies.co.il/static/static/js/2.6a555f0f.chunk.js",
-    "static/js/2.6a555f0f.chunk.js.map": "https://co-buddies.co.il/static/static/js/2.6a555f0f.chunk.js.map",
+    "static/js/2.0aaa9b67.chunk.js": "https://co-buddies.co.il/static/static/js/2.0aaa9b67.chunk.js",
+    "static/js/2.0aaa9b67.chunk.js.map": "https://co-buddies.co.il/static/static/js/2.0aaa9b67.chunk.js.map",
     "index.html": "https://co-buddies.co.il/static/index.html",
-    "precache-manifest.99b7dc35d84b8766b9b2d9b0f4d6d976.js": "https://co-buddies.co.il/static/precache-manifest.99b7dc35d84b8766b9b2d9b0f4d6d976.js",
+    "precache-manifest.ffd047e72768b933f6124853f9212ea3.js": "https://co-buddies.co.il/static/precache-manifest.ffd047e72768b933f6124853f9212ea3.js",
     "service-worker.js": "https://co-buddies.co.il/static/service-worker.js",
     "static/css/2.89f067aa.chunk.css.map": "https://co-buddies.co.il/static/static/css/2.89f067aa.chunk.css.map",
-    "static/css/main.58b3813b.chunk.css.map": "https://co-buddies.co.il/static/static/css/main.58b3813b.chunk.css.map",
-    "static/js/2.6a555f0f.chunk.js.LICENSE.txt": "https://co-buddies.co.il/static/static/js/2.6a555f0f.chunk.js.LICENSE.txt",
+    "static/css/main.d16c7c10.chunk.css.map": "https://co-buddies.co.il/static/static/css/main.d16c7c10.chunk.css.map",
+    "static/js/2.0aaa9b67.chunk.js.LICENSE.txt": "https://co-buddies.co.il/static/static/js/2.0aaa9b67.chunk.js.LICENSE.txt",
     "static/media/index.scss": "https://co-buddies.co.il/static/static/media/VarelaRound-Regular.be9d644c.woff"
   },
   "entrypoints": [
     "static/js/runtime-main.0e0093ee.js",
     "static/css/2.89f067aa.chunk.css",
-    "static/js/2.6a555f0f.chunk.js",
-    "static/css/main.58b3813b.chunk.css",
-    "static/js/main.7420c036.chunk.js"
+    "static/js/2.0aaa9b67.chunk.js",
+    "static/css/main.d16c7c10.chunk.css",
+    "static/js/main.20ff2b3b.chunk.js"
   ]
 }
