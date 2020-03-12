@@ -47,13 +47,14 @@ class MatchMaker:
         pass
 
     def send_seek_message(self, message):
+        # TODO: consider adding here a lobby message regarding to the matchmaking
         pass
 
     def seek_matches(self):
         while self._should_matchmake:
             for minutes_left in range(3, 0, -1):
                 self.send_seek_message(minutes_left)
-                time.sleep(5)
+                time.sleep(20)
 
                 if minutes_left > 1:
                     continue

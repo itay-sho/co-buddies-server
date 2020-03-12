@@ -64,10 +64,8 @@ request_match_schema = {
 unrequest_match_schema = {
     '$schema': 'http://json-schema.org/draft-07/schema#',
     'type': 'object',
-    'properties': {
-        'user_id': {'type': 'number', 'minimum': 1, 'multipleOf': 1.0},
-    },
-    'required': ['user_id'],
+    'properties': {},
+    'required': [],
     'additionalProperties': False
 }
 
@@ -348,6 +346,7 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
             self._chat_user_id = content['chat_user_id']
             self._chat_user_name = content['chat_user_name']
             self._is_authenticated = True
+
             await self.send_error_message(response_to=error_payload['response_to'])
         else:
             # login has failed
@@ -400,10 +399,17 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
             {'type': 'request_match', 'channel_name': self.channel_name, 'user_id': self._chat_user_id}
         )
         await self.send_error_message(response_to=content['seq'])
+        if self._conversation_id != ConversationUserDictionary.LOBBY_CONVERSATION_ID:
+            await self.join_lobby()
 
-        await self.request_lobby_attendees_list()
+    async def process__unrequest_match(self, content):
+        await self.channel_layer.send(
+            'matchmaking-task',
+            {'type': 'unrequest_match', 'user_id': self._chat_user_id}
+        )
+        await self.send_error_message(response_to=content['seq'])
 
-    async def request_lobby_attendees_list(self):
+    async def join_lobby(self):
         await self.channel_layer.send(
             'conversation-manager-task',
             {'type': 'request_lobby_attendees_list', 'channel_name': self.channel_name}
@@ -412,9 +418,9 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
     async def response_lobby_attendees_list(self, content):
         attendees = json.loads(content['attendees'])
         # moving to lobby until response is given
-        await self.move_to_lobby(attendees)
+        await self._move_to_lobby(attendees)
 
-    async def move_to_lobby(self, attendees):
+    async def _move_to_lobby(self, attendees):
         connect_message = {
             'request_type': 'join',
             # TODO: this is a bug: using one chat sequence number to other.
