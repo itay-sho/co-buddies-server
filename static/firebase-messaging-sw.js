@@ -25,21 +25,3 @@ messaging.setBackgroundMessageHandler((payload) => {
 
     return self.registration.showNotification(notificationTitle, notificationOptions);
 });
-
-self.addEventListener('notificationclick', function(event) {
-    const clickedNotification = event.notification;
-    clickedNotification.close();
-
-    // This looks to see if the current is already open and
-    // focuses if it is
-    event.waitUntil(self.clients.matchAll({includeUncontrolled: true, type: 'window'}).then((clientList) => {
-        console.log(clientList);
-        for (let i = 0; i < clientList.length; i++) {
-            const client = clientList[i];
-            if (client.url === event.notification.url && 'focus' in client)
-                return client.focus();
-            else
-                console.log('client url: ', client.url);
-        }
-    }));
-});
