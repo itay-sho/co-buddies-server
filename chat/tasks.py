@@ -250,7 +250,7 @@ class MatchmakingTask(SyncConsumer):
         if prev_user_channel is not None:
             async_to_sync(self.channel_layer.send)(
                 prev_user_channel,
-                {'type': 'disconnect'}
+                {'type': 'close'}
             )
             self.matcher.remove_from_pool_if_exist(message['user_id'])
 

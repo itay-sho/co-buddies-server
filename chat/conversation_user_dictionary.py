@@ -16,7 +16,7 @@ class ConversationUserDictionary:
     '''
     return conversation_id if conversation was closed due to this operation, None otherwise
     '''
-    def remove_user_from_conversation(self, user_id, conversation_id, is_safe=False):
+    def remove_user_from_conversation(self, user_id, conversation_id, is_safe=True):
         self._remove_from_both_dicts(user_id, conversation_id, is_safe)
 
         if (
