@@ -49,7 +49,7 @@ class ConversationManagerTask(SyncConsumer):
         user_id = content['user_id']
         closed_conversation_id = self._conversation_user_dictionary.user_disconnect(user_id)
         if closed_conversation_id is not None:
-            self._close_conversation(closed_conversation_id)
+            self._close_conversation(closed_conversation_id, user_id)
 
     def leave_conversation(self, content):
         user_id = content['user_id']
@@ -60,9 +60,9 @@ class ConversationManagerTask(SyncConsumer):
         )
 
         if closed_conversation_id is not None:
-            self._close_conversation(closed_conversation_id)
+            self._close_conversation(closed_conversation_id, user_id)
 
-    def _close_conversation(self, conversation_id):
+    def _close_conversation(self, conversation_id, user_id):
         conversation = Conversation.objects.get(id=conversation_id)
         conversation.is_open = False
         conversation.save()
@@ -70,14 +70,18 @@ class ConversationManagerTask(SyncConsumer):
         async_to_sync(self.channel_layer.group_send)(
             self.get_conversation_channel(conversation_id),
             {
-                'type': 'chat.conversation_closed'
+                'type': 'chat.conversation_closed',
+                'user_id': user_id
             }
         )
 
     def join_conversation(self, content):
         user_id = content['user_id']
         conversation_id = content['conversation_id']
-        self._conversation_user_dictionary.leave_any_previous_conversations_and_join(user_id, conversation_id)
+        closed_conversation_id = self._conversation_user_dictionary.leave_any_previous_conversations_and_join(user_id, conversation_id)
+
+        if closed_conversation_id is not None:
+            return self._close_conversation(closed_conversation_id, user_id)
 
     def broadcast_message_to_conversation(self, content):
         conversation_id = self._conversation_user_dictionary.get_user_conversation(content['user_id'])
@@ -250,7 +254,7 @@ class MatchmakingTask(SyncConsumer):
         if prev_user_channel is not None:
             async_to_sync(self.channel_layer.send)(
                 prev_user_channel,
-                {'type': 'close'}
+                {'type': 'disconnect'}
             )
             self.matcher.remove_from_pool_if_exist(message['user_id'])
 

@@ -40,17 +40,20 @@ class ConversationUserDictionary:
         self._users_to_conversations_dict[user_id] = conversation_id
 
     def user_disconnect(self, user_id):
-        return self.remove_user_from_conversation(user_id, self._users_to_conversations_dict[user_id])
+        if user_id in self._users_to_conversations_dict:
+            return self.remove_user_from_conversation(user_id, self._users_to_conversations_dict[user_id])
 
     def conversation_close(self, conversation_id):
         for user in self._conversations_to_user_dict[conversation_id].copy():
             self.remove_user_from_conversation(user, conversation_id)
 
     def leave_any_previous_conversations_and_join(self, user_id, conversation_id):
+        closed_conversation_id = None
         if user_id in self._users_to_conversations_dict:
-            self.remove_user_from_conversation(user_id, self._users_to_conversations_dict[user_id])
+            closed_conversation_id = self.remove_user_from_conversation(user_id, self._users_to_conversations_dict[user_id])
 
         self.add_user_to_conversation(user_id, conversation_id)
+        return closed_conversation_id
 
     def get_conversation_attendees(self, conversation_id):
         return self._conversations_to_user_dict[conversation_id]

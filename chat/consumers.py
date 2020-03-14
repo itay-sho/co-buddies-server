@@ -11,13 +11,25 @@ base_schema = {
     '$schema': 'http://json-schema.org/draft-07/schema#',
     'type': 'object',
     'properties': {
-        'request_type': {'type': 'string', 'enum': ['send_message', 'receive_message', 'error', 'request_match', 'unrequest_match', 'receive_match', 'leave', 'join', 'authenticate', 'set_pn_token']},
+        'request_type': {'type': 'string', 'enum': ['join_lobby', 'conversation_closed', 'send_message', 'receive_message', 'error', 'request_match', 'unrequest_match', 'receive_match', 'leave', 'join', 'authenticate', 'set_pn_token']},
         'payload': {'type': 'object'},
         'seq': {'type': 'number', 'minimum': 1,  'multipleOf': 1.0},
     },
     'required': ['request_type', 'payload', 'seq'],
     'additionalProperties': False
 }
+
+empty_response_schema = {
+    '$schema': 'http://json-schema.org/draft-07/schema#',
+    'type': 'object',
+    'properties': {
+    },
+    'required': [],
+    'additionalProperties': False
+}
+
+conversation_closed_schema = empty_response_schema
+join_lobby_schema = empty_response_schema
 
 send_message_schema = {
     '$schema': 'http://json-schema.org/draft-07/schema#',
@@ -61,13 +73,7 @@ request_match_schema = {
     'additionalProperties': False
 }
 
-unrequest_match_schema = {
-    '$schema': 'http://json-schema.org/draft-07/schema#',
-    'type': 'object',
-    'properties': {},
-    'required': [],
-    'additionalProperties': False
-}
+unrequest_match_schema = empty_response_schema
 
 set_pn_token_schema = {
     '$schema': 'http://json-schema.org/draft-07/schema#',
@@ -128,6 +134,8 @@ authenticate_schema = {
 }
 
 payload_dict = {
+    'conversation_closed': conversation_closed_schema,
+    'join_lobby': join_lobby_schema,
     'send_message': send_message_schema,
     'receive_message': receive_message_schema,
     'error': error_schema,
@@ -239,8 +247,11 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
     async def disconnect(self, close_code):
         if self._is_authenticated:
             group = ConversationManagerTask.get_conversation_channel(self._conversation_id)
-            # sending disconnection to other user BEFORE closing all the sockets & configurations
-            await self.send_leave_message()
+
+            # not sending leave message if the conversation is closed already
+            if close_code != ErrorEnum.CONVERSATION_CLOSED:
+                # sending disconnection to other user BEFORE closing all the sockets & configurations
+                await self.send_leave_message()
 
             await self.channel_layer.send(
                 'matchmaking-task',
@@ -381,10 +392,21 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json(content['content'])
 
     async def chat_conversation_closed(self, content):
-        await self.channel_layer.group_discard(
-            ConversationManagerTask.get_conversation_channel(self._conversation_id),
-            self.channel_name
-        )
+        if content['user_id'] == self._chat_user_id:
+            await self.close(ErrorEnum.CONVERSATION_CLOSED)
+        else:
+            await self.channel_layer.group_discard(
+                ConversationManagerTask.get_conversation_channel(self._conversation_id),
+                self.channel_name
+            )
+
+            content = {
+                'request_type': 'conversation_closed',
+                'seq': self.get_next_seq(),
+                'payload': {}
+            }
+
+            await self.send_json(content)
 
     async def process__default(self, content):
         await self.send_error_message(
@@ -398,6 +420,9 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
             'matchmaking-task',
             {'type': 'request_match', 'channel_name': self.channel_name, 'user_id': self._chat_user_id}
         )
+        await self.send_error_message(response_to=content['seq'])
+
+    async def process__join_lobby(self, content):
         await self.send_error_message(response_to=content['seq'])
         if self._conversation_id != ConversationUserDictionary.LOBBY_CONVERSATION_ID:
             await self.join_lobby()
