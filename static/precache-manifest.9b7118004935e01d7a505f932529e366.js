@@ -1,6 +1,6 @@
 self.__precacheManifest = (self.__precacheManifest || []).concat([
   {
-    "revision": "b9ca4f266b0bbd8d2f7ee336b8f2c2a0",
+    "revision": "9f409acc9db634516b5f94354e544168",
     "url": "https://co-buddies.co.il/static/index.html"
   },
   {
@@ -8,7 +8,7 @@ self.__precacheManifest = (self.__precacheManifest || []).concat([
     "url": "https://co-buddies.co.il/static/static/css/2.89f067aa.chunk.css"
   },
   {
-    "revision": "331aad9792878c5951c0",
+    "revision": "14d1a98930b3581dee61",
     "url": "https://co-buddies.co.il/static/static/css/main.8842b3f2.chunk.css"
   },
   {
@@ -20,8 +20,8 @@ self.__precacheManifest = (self.__precacheManifest || []).concat([
     "url": "https://co-buddies.co.il/static/static/js/2.0aaa9b67.chunk.js.LICENSE.txt"
   },
   {
-    "revision": "331aad9792878c5951c0",
-    "url": "https://co-buddies.co.il/static/static/js/main.f870f669.chunk.js"
+    "revision": "14d1a98930b3581dee61",
+    "url": "https://co-buddies.co.il/static/static/js/main.11ee11c0.chunk.js"
   },
   {
     "revision": "cf4f0631a284ad7c06af",
