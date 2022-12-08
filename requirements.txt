@@ -6,7 +6,7 @@ autobahn==20.3.1
 Automat==20.2.0
 CacheControl==0.12.6
 cachetools==4.0.0
-certifi==2019.11.28
+certifi==2022.12.7
 cffi==1.14.0
 channels==2.4.0
 channels-redis==2.4.2
